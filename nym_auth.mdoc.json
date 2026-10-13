@@ -19,13 +19,11 @@
       },
       "ssc": {
         "mandatory": true,
-        "value_type": "bstr",
-        "display": [{ "locale": "en-US", "name": "Issuer-known seed commitment" }]
+        "value_type": "bstr"
       },
       "psc": {
         "mandatory": false,
-        "value_type": "bstr",
-        "display": [{ "locale": "en-US", "name": "Issuer-unknown seed commitment" }]
+        "value_type": "bstr"
       }
     }
   }
