@@ -59,6 +59,16 @@ In tables, REQ is short for REQUIRED, OPT is short for OPTIONAL, CON is short fo
 | **secret_seed_commitment** | `ssc` | `bstr` (32 bytes) | REQ | **Issuer Known Seed Commitment**: $`C = \text{SHA-256}(\text{secret\_seed})`$ where $`\text{secret\_seed}`$ is a 16-byte random shared secret between the issuer and prover. |
 | **private_seed_commitment** | `psc` | `bstr` (32 bytes) | OPT | **Issuer Unknown Seed Commitment**: $`C = \text{SHA-256}(\text{private\_seed})`$ where $`\text{private\_seed}`$ is a 16-byte random value known only to the prover. |
 
+## Non-disclosure of seed commitments
+
+`ssc` and `psc` have the same value in every presentation of the attestation, and `ssc` is known to the issuer. A Verifier that receives either value can use it as a stable correlation handle for the Holder.
+
+A Wallet Unit MUST NOT disclose the value of `ssc` or `psc` to a Verifier in any presentation, whatever the presentation format or protocol, including a presentation of this attestation as `mso_mdoc`. A Credential Query that requests `ssc` or `psc` through a format other than `circuit_zk` MUST be treated as unsatisfiable for this attestation, with the error handling defined in "Unsatisfiable Credential Queries". A Wallet Unit MUST NOT display the values of `ssc` or `psc` to the Holder.
+
+> **NOTE:** Using `ssc` or `psc` as the `source` of a `circuit_zk` function does not disclose its value, because issuer-signed attributes are never disclosed directly in a `circuit_zk` presentation.
+
+Disclosure of `birth_date` is not restricted by this section.
+
 ## Mobile Security Object requirements
 
 For ISO/IEC 18013-5 encoded attestations:
