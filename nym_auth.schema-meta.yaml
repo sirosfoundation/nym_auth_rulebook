@@ -2,3 +2,4 @@
 attestation_los: iso_18045_basic
 binding_type: key
 version: "0.3.0"
+rulebook_uri: https://github.com/sirosfoundation/nym_auth_rulebook/blob/main/nym_auth_rulebook.md
