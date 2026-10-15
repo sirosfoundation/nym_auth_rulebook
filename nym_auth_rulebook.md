@@ -345,7 +345,7 @@ The `verifier_id_type` is one of the following, and no other value is defined by
 
 * `semantic`: `"semantic_id:"` followed by the end Relying Party's semantic identifier as defined in ETSI TS 119 475, Section 5.1.3 (legal persons) or Section 5.1.5 (natural persons). The Wallet Unit MUST take it from the access certificate used to sign the request.
 * The name of an OpenID4VP Client Identifier Prefix (`client_id_type`), for which `verifier_id` is the identifier the Client Identifier binds to the Verifier, without the prefix and its colon:
-  * `x509_san_dns`: the dNSName Subject Alternative Name of the access certificate used to sign the request, in ASCII lower case and without a trailing dot.
+  * `x509_san_dns`: the dNSName Subject Alternative Name of the access certificate used to sign the request, in lower case and without a trailing dot. An internationalised domain name is supported and is represented in the A-label form (`xn--...`) in which it appears in the certificate (RFC 5280, Section 7.2). How a name given in another form, such as a U-label, is converted to the A-label form is defined by the trust framework; a Wallet Unit MUST NOT apply its own conversion.
   * `x509_san_uri`: the uniformResourceIdentifier Subject Alternative Name of the access certificate used to sign the request, exactly as bound.
   * `decentralized_identifier`: the DID of the Verifier, without a fragment.
   * `openid_federation`: the Entity Identifier of the Verifier, exactly as in the validated trust chain.
