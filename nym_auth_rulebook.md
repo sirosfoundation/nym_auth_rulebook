@@ -284,7 +284,6 @@ EXAMPLE BELOW IS WORK IN PROGRESS AND BEING REVISED.
               "id": "nym-123",
               "params": {
                 "config": "known-offender-matching-ssc",
-                "verifier_id_type": "x509_san_dns",
                 "source": {
                   "path": [
                     "ssc"
@@ -340,22 +339,32 @@ A `req` MUST NOT contain more than one `pseudonym-v1-sha256` item. A Wallet Unit
 
 ### Verifier identity
 
-Configurations that use `verifier_input` derive it from `verifier_id`, a UTF-8 string whose form is selected by the Verifier with `verifier_id_type`:
+Configurations that use `verifier_input` derive it from `verifier_id`, a UTF-8 string. The request does not carry the form of `verifier_id`. Its `verifier_id_type` is agreed between Wallet Units and Verifiers in the trust framework they share, as specified below.
 
-* `semantic`: `"semantic_id:"` followed by the end Relying Party's semantic identifier as defined in ETSI TS 119 475, Section 5.1.3 (legal persons) or Section 5.1.5 (natural persons). The Wallet Unit MUST take it from the registration certificate when one is present, and otherwise from the access certificate.
-* `x509_san_dns`: the Client Identifier, i.e. `"x509_san_dns:"` followed by the DNS name bound to the access certificate used to sign the request.
+The `verifier_id_type` is one of the following, and no other value is defined by this specification:
 
-The Wallet Unit MUST treat the request as unsatisfiable if:
+* `semantic`: `"semantic_id:"` followed by the end Relying Party's semantic identifier as defined in ETSI TS 119 475, Section 5.1.3 (legal persons) or Section 5.1.5 (natural persons). The Wallet Unit MUST take it from the access certificate used to sign the request.
+* The name of an OpenID4VP Client Identifier Prefix (`client_id_type`), for which `verifier_id` is the identifier the Client Identifier binds to the Verifier, without the prefix and its colon:
+  * `x509_san_dns`: the dNSName Subject Alternative Name of the access certificate used to sign the request, in ASCII lower case and without a trailing dot.
+  * `x509_san_uri`: the uniformResourceIdentifier Subject Alternative Name of the access certificate used to sign the request, exactly as bound.
+  * `decentralized_identifier`: the DID of the Verifier, without a fragment.
+  * `openid_federation`: the Entity Identifier of the Verifier, exactly as in the validated trust chain.
 
-* the identifier of the requested type cannot be obtained from authenticated sources;
-* `verifier_id_type` is `x509_san_dns` and the Client Identifier uses any other prefix (including `x509_hash`);
-* `verifier_id_type` is `x509_san_dns` and the registration certificate identifies an intermediary.
+Wallet Units and Verifiers that take part in the same trust framework MUST use the same `verifier_id_type`, as specified by that trust framework. A Wallet Unit and a Verifier that are both part of more than one trust framework MUST take steps to choose the same `verifier_id_type` for each relationship, for example by agreeing on which trust framework governs it.
 
-> **NOTE 1:** The two identifier types yield unrelated pseudonyms for the same Relying Party. A Verifier that changes `verifier_id_type` or its identifier loses continuity with existing pseudonyms.
+A Wallet Unit MUST treat the request as unsatisfiable if:
 
-> **NOTE 2:** Outside the EUDIW ecosystem intermediaries cannot be detected; with `x509_san_dns` the pseudonym is then distinct per access-certificate holder, not per end Relying Party.
+* it cannot obtain a `verifier_id` of the agreed `verifier_id_type` from authenticated sources;
+* the agreed `verifier_id_type` is a Client Identifier Prefix and the request's Client Identifier uses any other prefix (including `x509_hash`);
+* the agreed `verifier_id_type` is a Client Identifier Prefix and the registration certificate identifies an intermediary.
+
+> **NOTE 1:** Different `verifier_id_type` values yield unrelated pseudonyms for the same Relying Party. A change of the agreed `verifier_id_type`, or of the Verifier's identifier, loses continuity with existing pseudonyms.
+
+> **NOTE 2:** Outside the EUDIW ecosystem intermediaries cannot be detected; with a Client Identifier Prefix type the pseudonym is then distinct per access-certificate holder, not per end Relying Party.
 
 > **NOTE 3:** Within the EUDIW, an intermediary acting without a registration certificate presents its own semantic identifier, so end Relying Parties behind it share a pseudonym space.
+
+> **NOTE 4:** A trust framework can state a single `verifier_id_type`, or an ordered list from which a Wallet Unit uses the first type for which it can obtain a `verifier_id`. The choice is not signalled in the request.
 
 ### Parameters
 
@@ -365,11 +374,10 @@ This specification version enables the following function parameters.
 | :-- | :-- | :-- | :-- | :-- |
 | `config` | string | REQ | Identifier for standard configurations. | Allowed values are specified in the configurations below. |
 | `verifier_context` | string | CON | Additional context supplied by the verifier. | Required for account recovery. MUST NOT be present elsewhere. UTF-8, 1–64 bytes. |
-| `verifier_id_type` | string | CON | Type of verifier identity used in `verifier_input`. | `semantic` or `x509_san_dns`. Required for configurations that use `verifier_input`; MUST NOT be present otherwise. |
 
 A Wallet Unit MUST treat the request as unsatisfiable if `verifier_context` is absent for a configuration that requires it, present for a configuration that does not allow it, or longer than 64 bytes.
 
-A Wallet Unit MUST treat the request as unsatisfiable if `verifier_id_type` is absent for a configuration that uses `verifier_input`, present for a configuration that does not, or has a value other than `semantic` or `x509_san_dns`.
+The request does not contain a `verifier_id_type`; see "Verifier identity".
 
 ### Configurations
 
