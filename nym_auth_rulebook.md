@@ -57,7 +57,7 @@ In tables, REQ is short for REQUIRED, OPT is short for OPTIONAL, CON is short fo
 | :--- | :--- | :--- | :--- | :--- |
 | **birth_date** | `birth_date` | `#6.1004(tstr)` (`full-date`) | REQ | Day, month, and year of birth. Used as input for zero-knowledge date comparison predicates. |
 | **secret_seed_commitment** | `ssc` | `bstr` (32 bytes) | REQ | **Issuer Known Seed Commitment**: $`C = \text{SHA-256}(\text{secret\_seed})`$ where $`\text{secret\_seed}`$ is a 16-byte random shared secret between the issuer and prover. |
-| **private_seed_commitment** | `psc` | `bstr` (32 bytes) | OPT | **Issuer Unknown Seed Commitment**: $`C = \text{SHA-256}(\text{private\_seed})`$ where $`\text{private\_seed}`$ is a 16-byte random value known only to the prover. |
+| **private_seed_commitment** | `psc` | `bstr` (32 bytes) | OPT | **Issuer Unknown Seed Commitment**: $`C = \text{SHA-256}(\text{private\_seed})`$ where $`\text{private\_seed}`$ is a 16-byte random value known only to the prover and specific to the issuer (see `known-offender-matching-psc`). |
 
 In the `bbs_cd` encoding the issuer signs the seed itself as a hidden attribute (`secret_seed`) instead of its commitment `ssc`, and adds the device key as an attribute (`device_key`); `psc` is not defined for `bbs_cd` in this version (see the BBS encoding section).
 
@@ -480,11 +480,23 @@ The configuration's properties are as follows:
 
 * The pseudonym value is distinct per `verifier_id`.
 * Remapping the pseudonym to an identity is as hard as brute forcing the `private_seed`, which is intractable.
-* To support known offender matching, the issuer MUST only allow one `psc` per identity subject.
+* To support known offender matching, the issuer MUST only allow one `psc` per identity subject, as specified below.
 
-> **NOTE 1**: If the issuer changes, it may allow a new `psc`, which changes the pseudonym generated.
+The `private_seed` is specific to the issuer: the Wallet Unit derives it from the account key, the credential type and the credential issuer identifier. The same person therefore has different `psc` values at different issuers, and issuers cannot correlate users through `psc`.
+
+An issuer MUST accept at most one `psc` per identity subject, where the subject is identified by the same identifiers from which the issuer's `secret_seed` (and thus `ssc`) is associated with the subject. The issuer MUST record the `psc` it first accepts for a subject. If it receives a different `psc` for that subject, it MUST refuse issuance, unless a reset of the subject's `psc` record was approved as follows:
+
+* A reset MUST follow an operator-approved step that includes re-identification of the subject. It SHOULD be rate-limited, and MUST be logged.
+* A reset is intended for the loss of the whole account: a brand-new account has a new key, hence a new `private_seed` and `psc`. Restoring the same account, on any device or with any passkey, yields the same `private_seed` and `psc`; presenting the recorded `psc` again is not a conflict and needs no reset.
+* The issuer cannot verify that a `psc` opens to any value, and MUST NOT be required to perform any verification of it beyond checking that it is 32 bytes.
+* The `psc` is never disclosed to Verifiers: only the pseudonym derived from the `private_seed` is. An issuer sees only the `psc` values issued under its own identifier.
+* If an issuer deletes a subject's `psc` record (for example on erasure), it allows a new `psc` for that subject, with the effect of a reset. An issuer needs a policy for this, as a ban recorded against the pseudonym no longer follows the subject.
+
+> **NOTE 1**: Since the `private_seed` is per issuer, a ban does not follow a person to a different issuer. If the issuer changes, a new `psc` is issued, which changes the pseudonym generated.
 
 > **NOTE 2**: If the `verifier_input` changes, so does the pseudonym generated. Known offender matching is not possible if the Verifier identity changes.
+
+> **NOTE 3** (non-normative): How the `psc` is conveyed to the issuer at issuance (a claim in the proof JWT covered by the proof of possession, advertised by the issuer) is not yet specified.
 
 #### `account-recovery-ssc`
 
