@@ -74,7 +74,7 @@ A Wallet Unit MUST NOT present a `nym_auth` attestation other than in a `zkp_req
 
 For ISO/IEC 18013-5 encoded attestations:
 
-* The MSO `validityInfo` MUST contain `signed`, `validFrom` and `validUntil` as defined in ISO/IEC 18013-5.
+* The MSO `validityInfo` MUST contain `signed`, `validFrom` and `validUntil` as defined in ISO/IEC 18013-5. A proof over the attestation MUST establish `validFrom` ≤ `proof_time` ≤ `validUntil`, both bounds included. `signed` is not checked.
 * The MSO `digestAlgorithm` MUST be `"SHA-256"`.
 * `deviceKeyInfo.deviceKey` MUST contain the public key of a device key pair whose private key is protected by [hardware / WSCD reference].
 * `issuerAuth` MUST carry the `x5chain` header parameter (label 33) in its unprotected header, containing the Document Signer certificate. The
@@ -125,9 +125,10 @@ An attestation conforms to the compact profile if, in addition to ISO/IEC 18013-
 * the `issuerAuth` protected header is exactly `{1: -7}`;
 * these maps contain exactly these keys, in this order:
   * MSO: `version`, `digestAlgorithm`, `docType`, `valueDigests`, `deviceKeyInfo`, `validityInfo`;
+  * `deviceKeyInfo`: `deviceKey`;
   * `validityInfo`: `signed`, `validFrom`, `validUntil`;
   * `IssuerSignedItem`: `digestID`, `random`, `elementIdentifier`, `elementValue`;
-  * `deviceKey`: 1, −1, −2, −3, with −2 (x) and −3 (y) each a 32-byte `bstr`.
+  * `deviceKey`: 1 (kty = 2), −1 (crv = 1), −2 (x), −3 (y), with x and y each a 32-byte `bstr`.
 
 Issuers SHOULD issue attestations conforming to the compact profile.
 
@@ -660,16 +661,16 @@ The hash input is the CBOR encoding of the array itself. The values are:
 
 The Wallet Unit MUST take `client_id`, `nonce`, `response_uri` and the response-encryption key from the validated Request Object, and MUST use the `Handover` of the channel on which it received the request. The Verifier MUST compute the `Handover` itself, from the Request Object it sent and, over the Digital Credentials API, the origin of its web page. It MUST NOT take any `Handover` value from the presentation.
 
-For `bbs_cd`, the scheme's request binds the session. Its audience is SHA-256 of the `OpenID4VPHandoverInfo` bytes (OpenID4VP 1.0 Appendix B.2.6.1), or of the `OpenID4VPDCAPIHandoverInfo` bytes over the Digital Credentials API (Appendix B.2.6.2). Its nonce is the request's `nonce`. The `ecdsa-pop/0.1` plugin proves that the committed `device_key` signed a message bound to that request.
+The device signature is a `deviceSignature` as defined in ISO/IEC 18013-5: a `COSE_Sign1` with a detached payload, `DeviceAuthenticationBytes`, and empty external data. `deviceMac` is not used. `DeviceNameSpaces` in `DeviceAuthentication` is the empty map. With a P-256 device key, the protected header is exactly `{1: -7}` (ES256).
 
-> **NOTE:** The validity date is also a range check, but may employ a different mechanism. As it is a required check, it is not something the verifier includes in `_req`.
+For `bbs_cd`, the scheme's request binds the session. Its audience is SHA-256 of the `OpenID4VPHandoverInfo` bytes (OpenID4VP 1.0 Appendix B.2.6.1), or of the `OpenID4VPDCAPIHandoverInfo` bytes over the Digital Credentials API (Appendix B.2.6.2). Its nonce is the request's `nonce`. The `ecdsa-pop/0.1` plugin proves that the committed `device_key` signed a message bound to that request.
 
 Over DC API the following applies to bind the pseudonym to the Verifier:
 
 1. Requests for `nym_auth` attestation sent over the Digital Credentials API MUST use the `openid4vp-v1-signed` protocol. An unsigned request MUST be rejected.
 2. The Wallet Unit MUST validate the Request Object signature and certificate chain according to the Client Identifier Prefix and, over the Digital Credentials API, MUST verify that the calling origin is contained in `expected_origins`.
 
-ver redirects, including a request fetched from a `request_uri`, the following applies:
+Over redirects, including a request fetched from a `request_uri`, the following applies:
 
 1. Requests for `nym_auth` attestation MUST be signed Request Objects. An unsigned request MUST be rejected, so the `redirect_uri` Client Identifier Prefix is not usable. The Wallet Unit MUST validate the Request Object signature and certificate chain according to the Client Identifier Prefix.
 2. The Wallet Unit MUST send the Authorization Response only to the `response_uri` of the validated Request Object, the value it uses in the `Handover`.
