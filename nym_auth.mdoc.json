@@ -12,12 +12,11 @@
   ],
   "claims": {
     "eu.europa.ec.eudi.nym_auth.1": {
-      "birth_date": {
-        "mandatory": true,
-        "value_type": "full-date",
-        "display": [{ "locale": "en-US", "name": "Date of birth" }]
-      },
       "ssc": {
+        "mandatory": true,
+        "value_type": "bstr"
+      },
+      "bsc": {
         "mandatory": true,
         "value_type": "bstr"
       },

@@ -55,17 +55,21 @@ In tables, REQ is short for REQUIRED, OPT is short for OPTIONAL, CON is short fo
 
 | Data Identifier | Attribute Identifier | CBOR / CDDL Representation | Presence | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **birth_date** | `birth_date` | `#6.1004(tstr)` (`full-date`) | REQ | Day, month, and year of birth. Used as input for zero-knowledge date comparison predicates. |
 | **secret_seed_commitment** | `ssc` | `bstr` (32 bytes) | REQ | **Issuer Known Seed Commitment**: $`C = \text{SHA-256}(\text{secret\_seed})`$ where $`\text{secret\_seed}`$ is a 16-byte random shared secret between the issuer and prover. |
+| **birth_date_commitment** | `bsc` | `bstr` (32 bytes) | REQ | **Birthdate Commitment**: $`C = \text{SHA-256}(\text{secret\_seed} \Vert \text{birth\_date})`$ where $`\text{secret\_seed}`$ is the issuer known seed committed to in `ssc`, and $`\text{birth\_date}`$ is the holder's date of birth as an RFC 3339 `full-date`. Used as input for zero-knowledge date comparison predicates. |
 | **private_seed_commitment** | `psc` | `bstr` (32 bytes) | OPT | **Issuer Unknown Seed Commitment**: $`C = \text{SHA-256}(\text{private\_seed})`$ where $`\text{private\_seed}`$ is a 16-byte random value known only to the prover. |
 
-In the `bbs_cd` encoding the issuer signs the seed itself as a hidden attribute (`secret_seed`) instead of its commitment `ssc`, and adds the device key as an attribute (`device_key`); `psc` is not defined for `bbs_cd` in this version (see the BBS encoding section).
+In the `mso_mdoc` encoding the commitment input `birth_date` is the `full-date` (`YYYY-MM-DD`) as a 10-byte UTF-8 string, without CBOR tag or length prefix; with the 16-byte `secret_seed`, the hash input is 26 bytes. `birth_date` is not itself a data element of the `mso_mdoc` encoding.
+
+> **NOTE:** `bsc` hides `birth_date` from anyone who does not know `secret_seed`. The issuer knows `secret_seed` and can open `bsc`.
+
+In the `bbs_cd` encoding the issuer signs the seed itself as a hidden attribute (`secret_seed`) instead of its commitment `ssc`, signs the date of birth itself as a hidden attribute (`birth_date`) instead of its commitment `bsc`, and adds the device key as an attribute (`device_key`); `psc` is not defined for `bbs_cd` in this version (see the BBS encoding section).
 
 ## Non-disclosure of seed commitments
 
-`ssc` and `psc` are stable values that can act as a correlation handle for the Holder.
+`ssc`, `bsc` and `psc` are stable values that can act as a correlation handle for the Holder.
 
-A Wallet Unit MUST NOT disclose `ssc`, `psc`, `secret_seed` or `birth_date` in a presentation; a Credential Query that requests any of these values MUST be treated as unsatisfiable.
+A Wallet Unit MUST NOT disclose `ssc`, `bsc`, `psc`, `secret_seed` or `birth_date` in a presentation; a Credential Query that requests any of these values MUST be treated as unsatisfiable.
 
 A Wallet Unit MUST NOT present a `nym_auth` attestation other than in a `zkp_req` presentation. A Credential Query in another format that would match a `nym_auth` attestation, with or without `claims`, MUST be treated as unsatisfiable for that attestation.
 
@@ -95,17 +99,17 @@ The complete attribute map for the `eu.europa.ec.eudi.nym_auth.1` namespace MUST
 
 ```cddl
 nym_auth_namespace = {
-  "birth_date" => full_date,
   "ssc"       => ssc_type,
+  "bsc"       => bsc_type,
   ? "psc"     => psc_type
 }
 
-full_date = #6.1004(tstr)
 ssc_type = bstr .size 32
+bsc_type = bstr .size 32
 psc_type = bstr .size 32
 ```
 
-Each data element is issued as a separate `IssuerSignedItem` as defined in ISO/IEC 18013-5. `birth_date` MUST be a CBOR tag 1004 text string (RFC 8943) containing an RFC 3339 `full-date`.
+Each data element is issued as a separate `IssuerSignedItem` as defined in ISO/IEC 18013-5. `birth_date` is carried only inside `bsc`, as defined in the attribute overview.
 
 Approved circuits for `mso_mdoc` MUST accept any encoding of these data elements and of the MSO that conforms to ISO/IEC 18013-5.
 
@@ -142,7 +146,7 @@ The schema digest is `ab4183a9ed0b57d6bfb8994c92b432bb9731a3e2fd974ac2f67422e2f7
 
 The issuer signs the messages with BBS; the credential header fixes the schema. No attribute is disclosable: a presentation commits to the attributes it uses and hides the rest.
 
-> **NOTE:** The `bbs_cd` encoding has no validity period and no `psc` in this version. `private_seed` would require blind issuance.
+> **NOTE:** The `bbs_cd` encoding has no validity period and no `psc` in this version. `private_seed` would require blind issuance. It has no `bsc` either: no attribute is disclosable, so `birth_date` is signed directly.
 
 # DCQL profile and presentation syntax (`zkp_req`)
 
@@ -536,12 +540,12 @@ The `pseudonym/0.1` plugin proves that `pseudonym` is computed from the committe
 
 ## Date predicate function (`age_check`)
 
-Zero-knowledge comparison operators operating strictly over the `birth_date` attribute (`#6.1004(tstr)` for `mso_mdoc`, `date-packed` for `bbs_cd`). Used to prove age thresholds, or ranges.
+Zero-knowledge comparison operators operating strictly over the holder's `birth_date` (the `full-date` committed in `bsc` for `mso_mdoc`, the `date-packed` attribute for `bbs_cd`). Used to prove age thresholds, or ranges.
 
 > **NOTE:** Date predicates in this version do not support exact date matches. Because a sufficiently narrow range is equivalent to an exact match, the interval between lower and upper bounds is restricted below. This restriction is specific to this attestation and is not a general rule for other date ranges.
 
 * Function identifier (`fn_id`): `"age_check"`.
-* Source attribute: `birth_date`.
+* Source attribute: for `mso_mdoc`, `bsc`; the comparison does not use `bsc` directly, but its opening `birth_date`, and asserts `SHA256(secret_seed) == ssc` and `SHA256(secret_seed || birth_date) == bsc`. For `bbs_cd`, `birth_date`.
 * Output: The assertion result `true` placed in `results[<handle>]`.
 
 ### Parameters
@@ -555,7 +559,7 @@ At least one parameter MUST be present. Dates are RFC 3339 `full-date` strings. 
 
 A `_req` MUST NOT contain more than one `age_check` item. A Wallet Unit MUST treat a request containing more than one `age_check` item as unsatisfiable.
 
-If both `ge` and `le` are present, the Wallet Unit MUST treat the request as unsatisfiable when `le < ge` or when `le − ge + 1` (counted in days) is less than 365. For `bbs_cd`, the comparison runs on the `date-packed` encoding, which preserves date order.
+If both `ge` and `le` are present, the Wallet Unit MUST treat the request as unsatisfiable when `le < ge` or when `le − ge + 1` (counted in days) is less than 365. For `mso_mdoc`, the comparison runs on the committed `full-date`, whose character order preserves date order. For `bbs_cd`, it runs on the `date-packed` encoding, which preserves date order.
 
 If the predicate does not hold for the attestation's `birth_date`, the request is unsatisfiable and the Wallet Unit MUST NOT produce a presentation.
 
