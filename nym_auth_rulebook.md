@@ -291,7 +291,7 @@ The example shows the decoded payload of a signed Request Object (`openid4vp-v1-
 
 EXAMPLE BELOW IS WORK IN PROGRESS AND BEING REVISED.
 
-Alternative 1. The Readdit demo runs this DCQL and metadata over the cross-device redirect flow (`request_uri`, `direct_post`); the example shows the Digital Credentials API.
+Over the cross-device redirect flow, the same DCQL and metadata are sent in a Request Object fetched from a `request_uri`, with Response Mode `direct_post.jwt` instead of `dc_api.jwt`; the response is encrypted in both cases.
 
 ```json
 {
@@ -678,5 +678,3 @@ Over redirects, including a request fetched from a `request_uri`, the following 
 ## Response confidentiality
 
 A `zkp_req` presentation MUST be encrypted to the Verifier. The Response Mode MUST be `direct_post.jwt` over redirects and `dc_api.jwt` over the Digital Credentials API, and the Request Object MUST carry the Verifier's response-encryption key in `client_metadata`. A Wallet Unit MUST treat a request with another Response Mode, or without a response-encryption key, as unsatisfiable.
-
-> **NOTE:** The Readdit demo does not encrypt the response, for simplicity. It uses `direct_post`, and its `Handover` has a `null` `jwkThumbprint`.
