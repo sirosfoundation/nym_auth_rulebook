@@ -412,7 +412,9 @@ Derives a deterministic pseudonym with the pseudorandom function named by `prf`.
 * Source attribute: for `mso_mdoc`, `ssc` (or `psc` when configured); the generation does not use `ssc` or `psc` directly, but their openings (`secret_seed` and `private_seed`). For `bbs_cd`, `secret_seed`.
 * Output: a `PseudonymValue` placed in `results[<handle>]`: 32 bytes for `prf` `sha-256`; for `prf` `hashdh-bls12381g1`, a compressed BLS12-381 G1 point of 48 bytes, which the Verifier processes as it chooses.
 
-A `_req` MUST NOT contain more than one `pseudonym` item. A Wallet Unit MUST treat a request containing more than one as unsatisfiable.
+A `_req` MUST contain exactly one `pseudonym` item. A Wallet Unit MUST treat a request containing more than one, or none, as unsatisfiable.
+
+A `_req` carrying only predicate items is unsatisfiable for the same reason it is unverifiable: the proof is a single proof over the whole `_req`, and a Verifier checks it by verifying the revealed pseudonym against the statement it asked for. With no `pseudonym` item there is nothing for the Verifier to check the proof against, so a predicate result would rest on the Wallet Unit's assertion rather than on the proof — which is the property this rulebook exists to avoid. A Verifier that wants a predicate and no stable identifier should use a `pseudonym` configuration that is not linkable across presentations rather than omitting the item.
 
 ### Verifier identity
 
