@@ -111,6 +111,8 @@ psc_type = bstr .size 32
 
 Each data element is issued as a separate `IssuerSignedItem` as defined in ISO/IEC 18013-5. `birth_date` is carried only inside `bsc`, as defined in the attribute overview.
 
+The Wallet Unit MUST hold `secret_seed` and `birth_date` (and `private_seed` when `psc` is present) alongside the attestation; their delivery is not defined in this version.
+
 Approved circuits for `mso_mdoc` MUST accept any encoding of these data elements and of the MSO that conforms to ISO/IEC 18013-5.
 
 ## Compact profile
