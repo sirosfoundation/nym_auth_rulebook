@@ -88,8 +88,42 @@ for sfx in ("", "_zero_psc"):
 a, b = sig_structures["_with_psc"], sig_structures["_zero_psc"]
 ok(len(a) == len(b), f"[layout] both variants have the same Sig_structure length ({len(a)} bytes, {(len(a) + 72) // 64} SHA-256 blocks)")
 ok(a[:148] == b[:148], "[layout] first 148 bytes identical across variants (2 SHA-256 blocks precomputable)")
-V = json.loads((D / "nym_auth_test_vectors.json").read_text())
-bd = V["holder_openings"]["birth_date"]; ac = V["expected"]["age_check"]
-ok(ac["ge"] <= bd <= ac["le"], "age_check ge/le holds on full-date string order")
-ok(int.from_bytes(bd.encode(), "big") >= int.from_bytes(ac["ge"].encode(), "big"), "80-bit big-endian integer comparison agrees")
+# ---------------------------------------------------------------- age ranges: independent E/C conversion
+import datetime as dt
+def subtract_years(D, n):
+    """D minus n years as (y, m, d); may be no calendar date."""
+    return (D.year - n, D.month, D.day)
+def is_date(t):
+    try: dt.date(*t); return True
+    except ValueError: return False
+def bounds(D, rng):
+    m = re.fullmatch(r"(\d+)(-(\d+)|\+|-)", rng)
+    assert m, rng
+    a, tail, b = int(m.group(1)), m.group(2), m.group(3)
+    A, B = (a, int(b)) if b is not None else ((a, None) if tail == "+" else (None, a))
+    C = E = None
+    if A is not None:   # latest calendar date on or before D - A years
+        t = subtract_years(D, A); C = dt.date(*t) if is_date(t) else dt.date(t[0], t[1], t[2] - 1)
+    if B is not None:   # earliest calendar date after D - (B+1) years
+        t = subtract_years(D, B + 1); E = dt.date(*t) + dt.timedelta(days=1) if is_date(t) else dt.date(t[0], 3, 1)
+    return E, C
+iso = lambda d: d.isoformat() if d else None
+
+for sfx in ("", "_zero_psc"):
+    V = json.loads((D / f"nym_auth_test_vectors{sfx}.json").read_text())
+    A_ = V["expected"]["age_check"]; pt = A_["proof_time"]; Dd = dt.date.fromisoformat(pt[:10])
+    vi = V["mso"]["validity"]
+    ok(vi["validFrom"] <= pt <= vi["validUntil"] and A_["D"] == Dd.isoformat(), f"[age{sfx}] validFrom <= proof_time <= validUntil; D is its UTC date")
+    bd = V["holder_openings"]["birth_date"]
+    for c in A_["cases"]:
+        E, C = bounds(Dd, c["range"])
+        holds = (E is None or iso(E) <= bd) and (C is None or bd <= iso(C))
+        as_int = lambda s: int.from_bytes(s.encode(), "big")          # the circuit's 80-bit comparison
+        holds_int = (E is None or as_int(iso(E)) <= as_int(bd)) and (C is None or as_int(bd) <= as_int(iso(C)))
+        ok([iso(E), iso(C)] == [c["E"], c["C"]] and holds == holds_int == c["holds"],
+           f"[age{sfx}] range {c['range']} at D={Dd}: E={c['E']} C={c['C']} holds={c['holds']}")
+    for r in V["expected"]["range_conversion"]:
+        E, C = bounds(dt.date.fromisoformat(r["D"]), r["range"])
+        ok([iso(E), iso(C)] == [r["E"], r["C"]], f"[age{sfx}] conversion {r['range']} at D={r['D']}: E={r['E']} C={r['C']}")
+
 print(f"\n{sum(res)}/{len(res)} checks passed"); sys.exit(0 if all(res) else 1)

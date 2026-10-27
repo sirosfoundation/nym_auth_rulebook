@@ -108,6 +108,51 @@ Z = bytes(32)
 verifier_id, verifier_context, user_value = client_id, "account-42", "my-linking-secret"
 vi = sha256(verifier_id.encode())
 
+# ---------------------------------------------------------------- age ranges (rulebook age_check)
+import re
+import calendar
+PROOF_TIME = "2026-10-27T12:00:00Z"           # inside the MSO validity window
+
+def _latest_on_or_before(y, m, d):            # (y, m, d) may be no calendar date: only (y, 2, 29) in a non-leap year
+    return dt.date(y, m, d) if (m, d) != (2, 29) or calendar.isleap(y) else dt.date(y, 2, 28)
+
+def _earliest_after(y, m, d):
+    return dt.date(y, m, d) + dt.timedelta(days=1) if (m, d) != (2, 29) or calendar.isleap(y) else dt.date(y, 3, 1)
+
+def age_bounds(D, rng):
+    """E and C for a range at date D (dt.date); None for a missing bound."""
+    m = re.fullmatch(r"(\d+)-(\d+)|(\d+)\+|(\d+)-", rng)
+    if not m:
+        raise ValueError("bad range")
+    if m.group(1) is not None:
+        A, B = int(m.group(1)), int(m.group(2))
+        if A > B:
+            raise ValueError("A > B")
+    elif m.group(3) is not None:
+        A, B = int(m.group(3)), None
+    else:
+        A, B = None, int(m.group(4))
+    C = _latest_on_or_before(D.year - A, D.month, D.day) if A is not None else None
+    E = _earliest_after(D.year - (B + 1), D.month, D.day) if B is not None else None
+    return E, C
+
+def age_case(D, rng):
+    E, C = age_bounds(D, rng)
+    bd = dt.date.fromisoformat(birth_date)
+    return {"range": rng, "E": E.isoformat() if E else None, "C": C.isoformat() if C else None,
+            "holds": (E is None or E <= bd) and (C is None or bd <= C)}
+
+D_PROOF = dt.date.fromisoformat(PROOF_TIME[:10])
+AGE_CHECK = {
+    "proof_time": PROOF_TIME, "D": D_PROOF.isoformat(), "birth_date": birth_date,
+    "cases": [age_case(D_PROOF, r) for r in ["13-17", "16-16", "16+", "16-", "17+", "12-15", "18+"]],
+}
+RANGE_CONVERSION = [dict(D=D.isoformat(), range=r, **{k: (v.isoformat() if v else None)
+                         for k, v in zip(("E", "C"), age_bounds(D, r))})
+                    for D, r in [(dt.date(2026, 10, 20), "13-17"), (dt.date(2026, 10, 9), "13-17"),
+                                 (dt.date(2028, 2, 29), "13+"), (dt.date(2028, 2, 29), "17-"),
+                                 (dt.date(2027, 3, 1), "15-15"), (dt.date(2027, 2, 28), "0-0")]]
+
 def build(sfx, psc, has_private_seed):
     # IssuerSignedItems: bsc at digestID 0, psc at digestID 1; keys digestID, random, elementIdentifier, elementValue
     items, item_bytes, digests = [], [], {}
@@ -188,8 +233,8 @@ def build(sfx, psc, has_private_seed):
                  "device": {"x": H(dx), "y": H(dy), "d": priv_hex(dev_key)}},
         "sessions": sessions,
         "expected": {
-            "age_check": {"ge": "2008-10-10", "le": "2013-10-09", "holds": True,
-                          "also_test_fails": [{"ge": "2010-05-18"}, {"le": "2010-05-16"}]},
+            "age_check": AGE_CHECK,
+            "range_conversion": RANGE_CONVERSION,
             "pseudonym_inputs": {"verifier_id": verifier_id, "verifier_input_sha256": H(vi),
                                  "verifier_context": verifier_context, "user_supplied_value": user_value},
             "pseudonyms_sha256": pseudonyms,

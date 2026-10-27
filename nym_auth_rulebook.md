@@ -209,7 +209,7 @@ ZkpPresentation = {
   "system_id"      => tstr,            ; approved system used: a circuit or scheme identifier
   "proof"          => bstr,            ; proof as defined by the proof system
   "issuer_key_set" => IssuerKeySet,
-  ? "proof_time"   => tdate,           ; present when the system checks validity
+  ? "proof_time"   => tdate,           ; present when the system checks validity or `_req` has `age_check`
   "results"        => Results
 }
 
@@ -229,7 +229,7 @@ The keys of `results` MUST be exactly the `return` handles of the items in `_req
 * `mso_mdoc`: each element is a DER-encoded Document Signer certificate.
 * `bbs_cd`: each element is a BBS issuer public key (96 bytes, the ETSI encoding). A BBS proof verifies under one issuer key, so the set holds exactly one element and reveals the issuer to the Verifier.
 
-`proof_time` is the time used by the system for validity checks. The Verifier MUST reject the presentation if `proof_time` deviates from its own clock by more than its tolerance.
+`proof_time` is the time used by the system for validity checks and, through its UTC date D, for the `age_check` bounds. It MUST be present when the system checks validity or `_req` contains an `age_check` item. The Verifier MUST reject the presentation if `proof_time` deviates from its own clock by more than its tolerance.
 
 ### Verification
 
@@ -237,7 +237,7 @@ To verify a presentation, the Verifier:
 
 1. looks up `system_id` in the approved systems registry and confirms it is one it accepts and offered;
 2. validates `issuer_key_set` as the registry entry defines;
-3. assembles its statement as the registry entry defines, taking `issuer_key_set`, `proof_time` and the values in `results` from the presentation and computing everything else itself (session binding values, `verifier_input`, and the `_req` parameters it sent): for a circuit, the public inputs in the registry's order; for a scheme, the scheme's request;
+3. assembles its statement as the registry entry defines, taking `issuer_key_set`, `proof_time` and the values in `results` from the presentation and computing everything else itself (session binding values, `verifier_input`, the `_req` parameters it sent, and the `age_check` bounds E and C from `range` and `proof_time`): for a circuit, the public inputs in the registry's order; for a scheme, the scheme's request;
 4. verifies `proof` against the system and that statement, and confirms that the proof establishes each value in `results` and each assertion in `_req`.
 
 The Verifier MUST NOT take any part of its statement from the presentation other than `issuer_key_set`, `proof_time` and `results`.
@@ -273,11 +273,14 @@ Example `vp_token` (presentations shown in CBOR diagnostic notation before encod
   "system_id": "urn:mms:bbs-cd:nym_auth:v1",
   "proof": h'42434450...',
   "issuer_key_set": [h'...'],
+  "proof_time": 0("2026-10-20T12:00:00Z"),
   "results": {
     "nym": h'a3...'
   }
 }
 ```
+
+With `proof_time` on 2026-10-20, the range `13-17` gives E = 2008-10-21 and C = 2013-10-20.
 
 ## Example DCQL request
 
@@ -349,8 +352,7 @@ Alternative 1. The Readdit demo runs this DCQL and metadata over the cross-devic
           {
             "fn_id": "age_check",
             "params": {
-              "ge": "2008-10-10",
-              "le": "2013-10-09"
+              "range": "13-17"
             }
           }
         ]
@@ -375,8 +377,7 @@ Alternative 1. The Readdit demo runs this DCQL and metadata over the cross-devic
           {
             "fn_id": "age_check",
             "params": {
-              "ge": "2008-10-10",
-              "le": "2013-10-09"
+              "range": "13-17"
             }
           }
         ]
@@ -545,9 +546,7 @@ The `pseudonym/0.1` plugin proves that `pseudonym` is computed from the committe
 
 ## Date predicate function (`age_check`)
 
-Zero-knowledge comparison operators operating strictly over the holder's `birth_date` (the `full-date` committed in `bsc` for `mso_mdoc`, the `date-packed` attribute for `bbs_cd`). Used to prove age thresholds, or ranges.
-
-> **NOTE:** Date predicates in this version do not support exact date matches. Because a sufficiently narrow range is equivalent to an exact match, the interval between lower and upper bounds is restricted below. This restriction is specific to this attestation and is not a general rule for other date ranges.
+Proves that the Holder's age in whole years lies in a range, by comparison over the holder's `birth_date` (the `full-date` committed in `bsc` for `mso_mdoc`, the `date-packed` attribute for `bbs_cd`).
 
 * Function identifier (`fn_id`): `"age_check"`.
 * Source attribute: for `mso_mdoc`, `bsc`; the comparison does not use `bsc` directly, but its opening `birth_date`, and asserts `SHA256(secret_seed || birth_date) == bsc`. For `bbs_cd`, `birth_date`.
@@ -556,16 +555,31 @@ Zero-knowledge comparison operators operating strictly over the holder's `birth_
 
 ### Parameters
 
-| Parameter | Type   | Presence | Description |
-|-----------|--------|----------|-------------|
-| `ge`      | String | OPT | Born on or after date: $`\text{birth\_date} \ge \text{date}`$. |
-| `le`      | String | OPT | Born on or before date: $`\text{birth\_date} \le \text{date}`$. |
+| Parameter | Type | Presence | Description |
+| :-- | :-- | :-- | :-- |
+| `range` | String | REQ | The allowed ages in whole years, bounds included. |
 
-At least one parameter MUST be present. Dates are RFC 3339 `full-date` strings. Strict bounds are expressed by shifting the date by one day.
+`range` has this syntax (RFC 5234):
+
+```abnf
+range = age "-" age   ; A-B: ages A to B, both included
+      / age "+"       ; A+: age A or more
+      / age "-"       ; B-: age B or less
+age   = 1*DIGIT       ; base-10 integer
+```
+
+A Wallet Unit MUST treat the request as unsatisfiable if `range` does not match this syntax, or if it is `A-B` with A > B.
+
+The Wallet Unit and the Verifier compute the date bounds E and C from `range` and D, the UTC date of `proof_time`:
+
+* D minus N years keeps the month and day of D and subtracts N from its year. The result may be no calendar date, such as (2015, 02, 29); it compares with calendar dates in date order.
+* C is the latest calendar date on or before D minus A years.
+* E is the earliest calendar date after D minus (B + 1) years.
+* `A+` has no E, and `B-` has no C. A system uses its widest value for a missing bound.
+
+The proof shows E ≤ `birth_date` ≤ C. For `mso_mdoc`, the comparison runs on the committed `full-date`, whose character order preserves date order. For `bbs_cd`, it runs on the `date-packed` encoding, which preserves date order.
 
 A `_req` MUST NOT contain more than one `age_check` item. A Wallet Unit MUST treat a request containing more than one `age_check` item as unsatisfiable.
-
-If both `ge` and `le` are present, the Wallet Unit MUST treat the request as unsatisfiable when `le < ge` or when `le − ge + 1` (counted in days) is less than 365. For `mso_mdoc`, the comparison runs on the committed `full-date`, whose character order preserves date order. For `bbs_cd`, it runs on the `date-packed` encoding, which preserves date order.
 
 If the predicate does not hold for the attestation's `birth_date`, the request is unsatisfiable and the Wallet Unit MUST NOT produce a presentation.
 
@@ -588,7 +602,7 @@ Each registry entry MUST specify:
 
 The following MUST be private: `secret_seed`, `private_seed`, `prover_input`, `birth_date`, all issuer-signed data and digests, the issuer signature, the device public key and device signature.
 
-The following MUST be part of the Verifier's statement: `verifier_input`, the session binding values defined by the registry entry, all function parameter values in `_req`, `proof_time` when validity is checked, and the issuer key set.
+The following MUST be part of the Verifier's statement: `verifier_input`, the session binding values defined by the registry entry, all function parameter values in `_req` (for `age_check`, the bounds E and C), `proof_time` when validity is checked or `age_check` is requested, and the issuer key set.
 
 The pseudonym is a public output. Predicates have no output: their parameters are part of the Verifier's statement, and the proof shows that they hold.
 
