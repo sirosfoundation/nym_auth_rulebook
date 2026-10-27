@@ -12,16 +12,12 @@
   ],
   "claims": {
     "eu.europa.ec.eudi.nym_auth.1": {
-      "ssc": {
-        "mandatory": true,
-        "value_type": "bstr"
-      },
       "bsc": {
         "mandatory": true,
         "value_type": "bstr"
       },
       "psc": {
-        "mandatory": false,
+        "mandatory": true,
         "value_type": "bstr"
       }
     }
