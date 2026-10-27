@@ -55,17 +55,18 @@ In tables, REQ is short for REQUIRED, OPT is short for OPTIONAL, CON is short fo
 
 | Data Identifier | Attribute Identifier | CBOR / CDDL Representation | Presence | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **birth_date** | `birth_date` | `#6.1004(tstr)` (`full-date`) | REQ | Day, month, and year of birth. Used as input for zero-knowledge date comparison predicates. |
-| **secret_seed_commitment** | `ssc` | `bstr` (32 bytes) | REQ | **Issuer Known Seed Commitment**: $`C = \text{SHA-256}(\text{secret\_seed})`$ where $`\text{secret\_seed}`$ is a 16-byte random shared secret between the issuer and prover. |
-| **private_seed_commitment** | `psc` | `bstr` (32 bytes) | OPT | **Issuer Unknown Seed Commitment**: $`C = \text{SHA-256}(\text{private\_seed})`$ where $`\text{private\_seed}`$ is a 16-byte random value known only to the prover. |
+| **birth_date_commitment** | `bsc` | `bstr` (32 bytes) | REQ | **Birthdate and Seed Commitment**: $`C = \text{SHA-256}(\text{secret\_seed} \Vert \text{birth\_date})`$ where $`\text{secret\_seed}`$ is a 16-byte random shared secret between the issuer and prover (the issuer known seed), and $`\text{birth\_date}`$ is the holder's date of birth as an RFC 3339 `full-date`. |
+| **private_seed_commitment** | `psc` | `bstr` (32 bytes) | REQ | **Issuer Unknown Seed Commitment**: $`C = \text{SHA-256}(\text{private\_seed})`$ where $`\text{private\_seed}`$ is a 16-byte random value known only to the prover, or 32 zero bytes if the prover has not provided one. |
 
-In the `bbs_cd` encoding the issuer signs the seed itself as a hidden attribute (`secret_seed`) instead of its commitment `ssc`, and adds the device key as an attribute (`device_key`); `psc` is not defined for `bbs_cd` in this version (see the BBS encoding section).
+In the `mso_mdoc` encoding the commitment input `birth_date` is the `full-date` (`YYYY-MM-DD`) as a 10-byte UTF-8 string, without CBOR tag or length prefix; with the 16-byte `secret_seed`, the hash input is 26 bytes. `birth_date` is not itself a data element of the `mso_mdoc` encoding.
+
+In the `bbs_cd` encoding the issuer signs the seed itself (`secret_seed`) and the date of birth itself (`birth_date`) as hidden attributes, instead of their commitment `bsc`, and adds the device key as an attribute (`device_key`); `psc` is not defined for `bbs_cd` in this version (see the BBS encoding section).
 
 ## Non-disclosure of seed commitments
 
-`ssc` and `psc` are stable values that can act as a correlation handle for the Holder.
+`bsc` and `psc` are stable values that can act as a correlation handle for the Holder.
 
-A Wallet Unit MUST NOT disclose `ssc`, `psc`, `secret_seed` or `birth_date` in a presentation; a Credential Query that requests any of these values MUST be treated as unsatisfiable.
+A Wallet Unit MUST NOT disclose `bsc` or `psc` in a presentation; a Credential Query that requests any of these values MUST be treated as unsatisfiable.
 
 A Wallet Unit MUST NOT present a `nym_auth` attestation other than in a `zkp_req` presentation. A Credential Query in another format that would match a `nym_auth` attestation, with or without `claims`, MUST be treated as unsatisfiable for that attestation.
 
@@ -95,17 +96,19 @@ The complete attribute map for the `eu.europa.ec.eudi.nym_auth.1` namespace MUST
 
 ```cddl
 nym_auth_namespace = {
-  "birth_date" => full_date,
-  "ssc"       => ssc_type,
-  ? "psc"     => psc_type
+  "bsc"       => bsc_type,
+  "psc"       => psc_type
 }
 
-full_date = #6.1004(tstr)
-ssc_type = bstr .size 32
+bsc_type = bstr .size 32
 psc_type = bstr .size 32
 ```
 
-Each data element is issued as a separate `IssuerSignedItem` as defined in ISO/IEC 18013-5. `birth_date` MUST be a CBOR tag 1004 text string (RFC 8943) containing an RFC 3339 `full-date`.
+Each data element is issued as a separate `IssuerSignedItem` as defined in ISO/IEC 18013-5. `birth_date` is carried only inside `bsc`, as defined in the attribute overview.
+
+The Wallet Unit MUST hold `secret_seed` and `birth_date` (and `private_seed` when `psc` is not 32 zero bytes) alongside the attestation; their delivery is not defined in this version.
+
+The issuer MUST compute `bsc` with the same `secret_seed` it uses to remap pseudonyms to an identity.
 
 Approved circuits for `mso_mdoc` MUST accept any encoding of these data elements and of the MSO that conforms to ISO/IEC 18013-5.
 
@@ -115,10 +118,16 @@ An attestation conforms to the compact profile if, in addition to ISO/IEC 18013-
 
 * it contains only the data elements defined in this document;
 * each `random` value is 16 bytes;
-* `digestID` values are assigned sequentially from 0;
+* `bsc` has `digestID` 0 and `psc` `digestID` 1;
 * the MSO contains no optional members;
 * `validityInfo` values have the form `YYYY-MM-DDTHH:MM:SSZ`;
-* the device key and the Document Signer key are P-256 keys.
+* the device key and the Document Signer key are P-256 keys;
+* the `issuerAuth` protected header is exactly `{1: -7}`;
+* these maps contain exactly these keys, in this order:
+  * MSO: `version`, `digestAlgorithm`, `docType`, `valueDigests`, `deviceKeyInfo`, `validityInfo`;
+  * `validityInfo`: `signed`, `validFrom`, `validUntil`;
+  * `IssuerSignedItem`: `digestID`, `random`, `elementIdentifier`, `elementValue`;
+  * `deviceKey`: 1, −1, −2, −3, with −2 (x) and −3 (y) each a 32-byte `bstr`.
 
 Issuers SHOULD issue attestations conforming to the compact profile.
 
@@ -142,7 +151,7 @@ The schema digest is `ab4183a9ed0b57d6bfb8994c92b432bb9731a3e2fd974ac2f67422e2f7
 
 The issuer signs the messages with BBS; the credential header fixes the schema. No attribute is disclosable: a presentation commits to the attributes it uses and hides the rest.
 
-> **NOTE:** The `bbs_cd` encoding has no validity period and no `psc` in this version. `private_seed` would require blind issuance.
+> **NOTE:** The `bbs_cd` encoding has no validity period and no `psc` in this version. `private_seed` would require blind issuance. It has no `bsc` either: no attribute is disclosable, so `secret_seed` and `birth_date` are signed directly.
 
 # DCQL profile and presentation syntax (`zkp_req`)
 
@@ -173,13 +182,17 @@ A Credential Query targeting the `nym_auth` attestation (`eu.europa.ec.eudi.nym_
 
 ### `_req` item member specification
 
-Each object inside the `_req` array MUST contain:
+Each object inside the `_req` array has the following members:
 
 | Member | Type | Presence | Description |
 | :--- | :--- | :--- | :--- |
 | `fn_id` | String | REQ | Function identifier registered in the function catalogue (`"pseudonym"`, `"age_check"`). |
-| `return` | String | REQ | An output handle unique within the Credential Query for mapping the result into `results`. |
+| `return` | String | CON | An output handle unique within the Credential Query for mapping the function's output into `results`. REQUIRED for value functions. MUST NOT be present for assertion functions. |
 | `params` | Object | OPT | Key-value mapping of declared parameters for the specified function. Omission applies the function's defined defaults. |
+
+Each function in the function catalogue is either a value function, whose output is placed in `results`, or an assertion function, which has no output: a presentation exists only if the assertion holds. A Wallet Unit MUST treat the request as unsatisfiable if an item lacks `return` for a value function or contains `return` for an assertion function.
+
+> **NOTE:** An assertion has no output so that a Verifier can never observe a negative result. A predicate that returned `true` or `false` would let a Verifier recover `birth_date` bit by bit through repeated queries.
 
 ## Response processing and results mapping
 
@@ -196,16 +209,15 @@ ZkpPresentation = {
   "system_id"      => tstr,            ; approved system used: a circuit or scheme identifier
   "proof"          => bstr,            ; proof as defined by the proof system
   "issuer_key_set" => IssuerKeySet,
-  ? "proof_time"   => tdate,           ; present when the system checks validity
+  ? "proof_time"   => tdate,           ; present when the system checks validity or `_req` has `age_check`
   "results"        => Results
 }
 
 IssuerKeySet = [+ bstr]                ; representation defined by the registry entry
 
-Results = { + tstr => ResultValue }    ; keys are the `return` handles in `_req`
-ResultValue = PseudonymValue / PredicateValue
+Results = { * tstr => ResultValue }    ; keys are the `return` handles in `_req`; empty if `_req` holds only assertions
+ResultValue = PseudonymValue
 PseudonymValue = bstr                  ; length set by the pseudonym's `prf`
-PredicateValue = true
 ```
 
 For `bbs_cd`, `proof` is the bbs-cd-plugins presentation envelope (MAGIC, the BBS proof with its commitments, and one proof per plugin, in request order).
@@ -217,7 +229,7 @@ The keys of `results` MUST be exactly the `return` handles of the items in `_req
 * `mso_mdoc`: each element is a DER-encoded Document Signer certificate.
 * `bbs_cd`: each element is a BBS issuer public key (96 bytes, the ETSI encoding). A BBS proof verifies under one issuer key, so the set holds exactly one element and reveals the issuer to the Verifier.
 
-`proof_time` is the time used by the system for validity checks. The Verifier MUST reject the presentation if `proof_time` deviates from its own clock by more than its tolerance.
+`proof_time` is the time used by the system for validity checks and, through its UTC date D, for the `age_check` bounds. It MUST be present when the system checks validity or `_req` contains an `age_check` item. The Verifier MUST reject the presentation if `proof_time` deviates from its own clock by more than its tolerance.
 
 ### Verification
 
@@ -225,8 +237,8 @@ To verify a presentation, the Verifier:
 
 1. looks up `system_id` in the approved systems registry and confirms it is one it accepts and offered;
 2. validates `issuer_key_set` as the registry entry defines;
-3. assembles its statement as the registry entry defines, taking `issuer_key_set`, `proof_time` and the values in `results` from the presentation and computing everything else itself (session binding values, `verifier_input`, and the `_req` parameters it sent): for a circuit, the public inputs in the registry's order; for a scheme, the scheme's request;
-4. verifies `proof` against the system and that statement, and confirms that the proof establishes each value in `results`.
+3. assembles its statement as the registry entry defines, taking `issuer_key_set`, `proof_time` and the values in `results` from the presentation and computing everything else itself (session binding values, `verifier_input`, the `_req` parameters it sent, and the `age_check` bounds E and C from `range` and `proof_time`): for a circuit, the public inputs in the registry's order; for a scheme, the scheme's request;
+4. verifies `proof` against the system and that statement, and confirms that the proof establishes each value in `results` and each assertion in `_req`.
 
 The Verifier MUST NOT take any part of its statement from the presentation other than `issuer_key_set`, `proof_time` and `results`.
 
@@ -249,8 +261,7 @@ Example `vp_token` (presentations shown in CBOR diagnostic notation before encod
   "issuer_key_set": [h'3082...'],
   "proof_time": 0("2026-10-20T12:00:00Z"),
   "results": {
-    "nym": h'5f2a...e1',
-    "age-range-123": true
+    "nym": h'5f2a...e1'
   }
 }
 ```
@@ -262,12 +273,14 @@ Example `vp_token` (presentations shown in CBOR diagnostic notation before encod
   "system_id": "urn:mms:bbs-cd:nym_auth:v1",
   "proof": h'42434450...',
   "issuer_key_set": [h'...'],
+  "proof_time": 0("2026-10-20T12:00:00Z"),
   "results": {
-    "nym": h'a3...',
-    "age-range-123": true
+    "nym": h'a3...'
   }
 }
 ```
+
+With `proof_time` on 2026-10-20, the range `13-17` gives E = 2008-10-21 and C = 2013-10-20.
 
 ## Example DCQL request
 
@@ -338,10 +351,8 @@ Alternative 1. The Readdit demo runs this DCQL and metadata over the cross-devic
           },
           {
             "fn_id": "age_check",
-            "return": "age-range-123",
             "params": {
-              "ge": "2008-10-10",
-              "le": "2013-10-09"
+              "range": "13-17"
             }
           }
         ]
@@ -365,10 +376,8 @@ Alternative 1. The Readdit demo runs this DCQL and metadata over the cross-devic
           },
           {
             "fn_id": "age_check",
-            "return": "age-range-123",
             "params": {
-              "ge": "2008-10-10",
-              "le": "2013-10-09"
+              "range": "13-17"
             }
           }
         ]
@@ -400,7 +409,7 @@ Functions invoked inside `_req` MUST be registered in this specification or an o
 
 1. The mathematical operation, possible intermediate values, and parameter constraints.
 2. The implicit credential source attribute(s) bound to the computation.
-3. The expected output representation in the presentation response `results` map.
+3. Whether it is a value function or an assertion function and, for a value function, the output representation in the presentation response `results` map.
 
 If a Wallet Unit receives a request for a function `fn_id` not defined below, or not supported by an approved system for the Credential Query's `source_format` and type value, the request is unsatisfiable.
 
@@ -409,7 +418,8 @@ If a Wallet Unit receives a request for a function `fn_id` not defined below, or
 Derives a deterministic pseudonym with the pseudorandom function named by `prf`.
 
 * Function identifier (`fn_id`): `"pseudonym"`.
-* Source attribute: for `mso_mdoc`, `ssc` (or `psc` when configured); the generation does not use `ssc` or `psc` directly, but their openings (`secret_seed` and `private_seed`). For `bbs_cd`, `secret_seed`.
+* Source attribute: for `mso_mdoc`, `bsc` for issuer-known-seed configurations and `psc` for private-seed configurations; the generation does not use `bsc` or `psc` directly, but the seed from their openings (`secret_seed` from `bsc`, `private_seed` from `psc`). For `bbs_cd`, `secret_seed`.
+* Function type: value function; `return` is REQUIRED.
 * Output: a `PseudonymValue` placed in `results[<handle>]`: 32 bytes for `prf` `sha-256`; for `prf` `hashdh-bls12381g1`, a compressed BLS12-381 G1 point of 48 bytes, which the Verifier processes as it chooses.
 
 A `_req` MUST NOT contain more than one `pseudonym` item. A Wallet Unit MUST treat a request containing more than one as unsatisfiable.
@@ -458,7 +468,7 @@ With `prf` `sha-256`, all configurations generate the pseudonym as: `pseudonym =
 
 The `known-offender-matching-ssc` configuration is defined as follows:
 
-1. For `mso_mdoc`, the `ssc` (issuer known seed commitment) value from the `nym_auth` attestation is used to assert `SHA256(secret_seed) == ssc`, with generation using `secret_seed`. For `bbs_cd`, generation uses the `secret_seed` attribute directly.
+1. For `mso_mdoc`, the circuit asserts `SHA256(secret_seed || birth_date) == bsc`, with `birth_date` the 10-byte `full-date` held by the Wallet Unit; generation uses `secret_seed`. For `bbs_cd`, generation uses the `secret_seed` attribute directly.
 2. With `prf` `sha-256`, `prover_input` is null (32 zero bytes). `hashdh-bls12381g1` takes no `prover_input` in this version.
 3. `verifier_input` is `SHA256(verifier_id)` with `prf` `sha-256`, and `UTF-8(verifier_id)` with `prf` `hashdh-bls12381g1`, with `verifier_id` as defined in the Verifier identity subsection.
 
@@ -474,7 +484,7 @@ The configuration's properties are as follows:
 
 #### `known-offender-matching-psc`
 
-1. For `mso_mdoc`, the `psc` (issuer unknown seed commitment) value from the `nym_auth` attestation is used to assert `SHA256(private_seed) == psc`; generation uses `private_seed`.
+1. For `mso_mdoc`, the `psc` (issuer unknown seed commitment) value from the `nym_auth` attestation is used to assert `SHA256(private_seed) == psc`; generation uses `private_seed`. If `psc` is 32 zero bytes, the Wallet Unit MUST treat the request as unsatisfiable.
 2. `prover_input` is null (32 zero bytes).
 3. `verifier_input` is `SHA256(verifier_id)`, with `verifier_id` as defined in the Verifier identity subsection.
 
@@ -482,7 +492,7 @@ The configuration's properties are as follows:
 
 * The pseudonym value is distinct per `verifier_id`.
 * Remapping the pseudonym to an identity is as hard as brute forcing the `private_seed`, which is intractable.
-* To support known offender matching, the issuer MUST only allow one `psc` per identity subject.
+* To support known offender matching, the issuer MUST only allow one `psc` other than 32 zero bytes per identity subject.
 
 > **NOTE 1**: If the issuer changes, it may allow a new `psc`, which changes the pseudonym generated.
 
@@ -490,7 +500,7 @@ The configuration's properties are as follows:
 
 #### `account-recovery-ssc`
 
-1. For `mso_mdoc`, the `ssc` (issuer known seed commitment) value from the `nym_auth` attestation is used to assert `SHA256(secret_seed) == ssc`; generation uses `secret_seed`.
+1. For `mso_mdoc`, the circuit asserts `SHA256(secret_seed || birth_date) == bsc`, with `birth_date` the 10-byte `full-date` held by the Wallet Unit; generation uses `secret_seed`.
 2. `prover_input` is null (32 zero bytes).
 3. `verifier_input` is `SHA256(SHA256(verifier_id) || SHA256(verifier_context))`, with `verifier_id` as defined in the Verifier identity subsection and `verifier_context` UTF-8 encoded as supplied by the Verifier.
 
@@ -503,7 +513,7 @@ The configuration's properties are as follows:
 
 #### `user-managed-pseudonym-xsite-ssc`
 
-1. For `mso_mdoc`, the `ssc` (issuer known seed commitment) value from the `nym_auth` attestation is used to assert `SHA256(secret_seed) == ssc`; generation uses `secret_seed`.
+1. For `mso_mdoc`, the circuit asserts `SHA256(secret_seed || birth_date) == bsc`, with `birth_date` the 10-byte `full-date` held by the Wallet Unit; generation uses `secret_seed`.
 2. `prover_input` is the SHA256 digest of a user-supplied value; shared across the sites the user wants to be linked across.
 3. `verifier_input` is null (32 zero bytes).
 
@@ -536,26 +546,40 @@ The `pseudonym/0.1` plugin proves that `pseudonym` is computed from the committe
 
 ## Date predicate function (`age_check`)
 
-Zero-knowledge comparison operators operating strictly over the `birth_date` attribute (`#6.1004(tstr)` for `mso_mdoc`, `date-packed` for `bbs_cd`). Used to prove age thresholds, or ranges.
-
-> **NOTE:** Date predicates in this version do not support exact date matches. Because a sufficiently narrow range is equivalent to an exact match, the interval between lower and upper bounds is restricted below. This restriction is specific to this attestation and is not a general rule for other date ranges.
+Proves that the Holder's age in whole years lies in a range, by comparison over the holder's `birth_date` (the `full-date` committed in `bsc` for `mso_mdoc`, the `date-packed` attribute for `bbs_cd`).
 
 * Function identifier (`fn_id`): `"age_check"`.
-* Source attribute: `birth_date`.
-* Output: The assertion result `true` placed in `results[<handle>]`.
+* Source attribute: for `mso_mdoc`, `bsc`; the comparison does not use `bsc` directly, but its opening `birth_date`, and asserts `SHA256(secret_seed || birth_date) == bsc`. For `bbs_cd`, `birth_date`.
+* Function type: assertion function; `return` MUST NOT be present.
+* Output: none. The presentation proves that the predicate holds; `results` has no entry for it.
 
 ### Parameters
 
-| Parameter | Type   | Presence | Description |
-|-----------|--------|----------|-------------|
-| `ge`      | String | OPT | Born on or after date: $`\text{birth\_date} \ge \text{date}`$. |
-| `le`      | String | OPT | Born on or before date: $`\text{birth\_date} \le \text{date}`$. |
+| Parameter | Type | Presence | Description |
+| :-- | :-- | :-- | :-- |
+| `range` | String | REQ | The allowed ages in whole years, bounds included. |
 
-At least one parameter MUST be present. Dates are RFC 3339 `full-date` strings. Strict bounds are expressed by shifting the date by one day.
+`range` has this syntax (RFC 5234):
+
+```abnf
+range = age "-" age   ; A-B: ages A to B, both included
+      / age "+"       ; A+: age A or more
+      / age "-"       ; B-: age B or less
+age   = 1*DIGIT       ; base-10 integer
+```
+
+A Wallet Unit MUST treat the request as unsatisfiable if `range` does not match this syntax, or if it is `A-B` with A > B.
+
+The Wallet Unit and the Verifier compute the date bounds E and C from `range` and D, the UTC date of `proof_time`:
+
+* D minus N years keeps the month and day of D and subtracts N from its year. The result may be no calendar date, such as (2015, 02, 29); it compares with calendar dates in date order.
+* C is the latest calendar date on or before D minus A years.
+* E is the earliest calendar date after D minus (B + 1) years.
+* `A+` has no E, and `B-` has no C. A system uses its widest value for a missing bound.
+
+The proof shows E ≤ `birth_date` ≤ C. For `mso_mdoc`, the comparison runs on the committed `full-date`, whose character order preserves date order. For `bbs_cd`, it runs on the `date-packed` encoding, which preserves date order.
 
 A `_req` MUST NOT contain more than one `age_check` item. A Wallet Unit MUST treat a request containing more than one `age_check` item as unsatisfiable.
-
-If both `ge` and `le` are present, the Wallet Unit MUST treat the request as unsatisfiable when `le < ge` or when `le − ge + 1` (counted in days) is less than 365. For `bbs_cd`, the comparison runs on the `date-packed` encoding, which preserves date order.
 
 If the predicate does not hold for the attestation's `birth_date`, the request is unsatisfiable and the Wallet Unit MUST NOT produce a presentation.
 
@@ -578,9 +602,9 @@ Each registry entry MUST specify:
 
 The following MUST be private: `secret_seed`, `private_seed`, `prover_input`, `birth_date`, all issuer-signed data and digests, the issuer signature, the device public key and device signature.
 
-The following MUST be part of the Verifier's statement: `verifier_input`, the session binding values defined by the registry entry, all function parameter values in `_req`, `proof_time` when validity is checked, and the issuer key set.
+The following MUST be part of the Verifier's statement: `verifier_input`, the session binding values defined by the registry entry, all function parameter values in `_req` (for `age_check`, the bounds E and C), `proof_time` when validity is checked or `age_check` is requested, and the issuer key set.
 
-The pseudonym and predicate results are public outputs.
+The pseudonym is a public output. Predicates have no output: their parameters are part of the Verifier's statement, and the proof shows that they hold.
 
 ## The `zkp_req` format
 
