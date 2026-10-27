@@ -1,4 +1,4 @@
 # Schema metadata for eu.europa.ec.eudi.nym_auth.1 (ISO/IEC 18013-5 mso_mdoc only)
-attestation_los: iso_18045_basic
+attestation_los: iso_18045_moderate
 binding_type: key
-version: "0.3.0"
+version: "0.4.0"
