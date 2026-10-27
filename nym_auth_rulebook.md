@@ -179,13 +179,17 @@ A Credential Query targeting the `nym_auth` attestation (`eu.europa.ec.eudi.nym_
 
 ### `_req` item member specification
 
-Each object inside the `_req` array MUST contain:
+Each object inside the `_req` array has the following members:
 
 | Member | Type | Presence | Description |
 | :--- | :--- | :--- | :--- |
 | `fn_id` | String | REQ | Function identifier registered in the function catalogue (`"pseudonym"`, `"age_check"`). |
-| `return` | String | REQ | An output handle unique within the Credential Query for mapping the result into `results`. |
+| `return` | String | CON | An output handle unique within the Credential Query for mapping the function's output into `results`. REQUIRED for value functions. MUST NOT be present for assertion functions. |
 | `params` | Object | OPT | Key-value mapping of declared parameters for the specified function. Omission applies the function's defined defaults. |
+
+Each function in the function catalogue is either a value function, whose output is placed in `results`, or an assertion function, which has no output: a presentation exists only if the assertion holds. A Wallet Unit MUST treat the request as unsatisfiable if an item lacks `return` for a value function or contains `return` for an assertion function.
+
+> **NOTE:** An assertion has no output so that a Verifier can never observe a negative result. A predicate that returned `true` or `false` would let a Verifier recover `birth_date` bit by bit through repeated queries.
 
 ## Response processing and results mapping
 
@@ -208,10 +212,9 @@ ZkpPresentation = {
 
 IssuerKeySet = [+ bstr]                ; representation defined by the registry entry
 
-Results = { + tstr => ResultValue }    ; keys are the `return` handles in `_req`
-ResultValue = PseudonymValue / PredicateValue
+Results = { * tstr => ResultValue }    ; keys are the `return` handles in `_req`; empty if `_req` holds only assertions
+ResultValue = PseudonymValue
 PseudonymValue = bstr                  ; length set by the pseudonym's `prf`
-PredicateValue = true
 ```
 
 For `bbs_cd`, `proof` is the bbs-cd-plugins presentation envelope (MAGIC, the BBS proof with its commitments, and one proof per plugin, in request order).
@@ -232,7 +235,7 @@ To verify a presentation, the Verifier:
 1. looks up `system_id` in the approved systems registry and confirms it is one it accepts and offered;
 2. validates `issuer_key_set` as the registry entry defines;
 3. assembles its statement as the registry entry defines, taking `issuer_key_set`, `proof_time` and the values in `results` from the presentation and computing everything else itself (session binding values, `verifier_input`, and the `_req` parameters it sent): for a circuit, the public inputs in the registry's order; for a scheme, the scheme's request;
-4. verifies `proof` against the system and that statement, and confirms that the proof establishes each value in `results`.
+4. verifies `proof` against the system and that statement, and confirms that the proof establishes each value in `results` and each assertion in `_req`.
 
 The Verifier MUST NOT take any part of its statement from the presentation other than `issuer_key_set`, `proof_time` and `results`.
 
@@ -255,8 +258,7 @@ Example `vp_token` (presentations shown in CBOR diagnostic notation before encod
   "issuer_key_set": [h'3082...'],
   "proof_time": 0("2026-10-20T12:00:00Z"),
   "results": {
-    "nym": h'5f2a...e1',
-    "age-range-123": true
+    "nym": h'5f2a...e1'
   }
 }
 ```
@@ -269,8 +271,7 @@ Example `vp_token` (presentations shown in CBOR diagnostic notation before encod
   "proof": h'42434450...',
   "issuer_key_set": [h'...'],
   "results": {
-    "nym": h'a3...',
-    "age-range-123": true
+    "nym": h'a3...'
   }
 }
 ```
@@ -344,7 +345,6 @@ Alternative 1. The Readdit demo runs this DCQL and metadata over the cross-devic
           },
           {
             "fn_id": "age_check",
-            "return": "age-range-123",
             "params": {
               "ge": "2008-10-10",
               "le": "2013-10-09"
@@ -371,7 +371,6 @@ Alternative 1. The Readdit demo runs this DCQL and metadata over the cross-devic
           },
           {
             "fn_id": "age_check",
-            "return": "age-range-123",
             "params": {
               "ge": "2008-10-10",
               "le": "2013-10-09"
@@ -406,7 +405,7 @@ Functions invoked inside `_req` MUST be registered in this specification or an o
 
 1. The mathematical operation, possible intermediate values, and parameter constraints.
 2. The implicit credential source attribute(s) bound to the computation.
-3. The expected output representation in the presentation response `results` map.
+3. Whether it is a value function or an assertion function and, for a value function, the output representation in the presentation response `results` map.
 
 If a Wallet Unit receives a request for a function `fn_id` not defined below, or not supported by an approved system for the Credential Query's `source_format` and type value, the request is unsatisfiable.
 
@@ -416,6 +415,7 @@ Derives a deterministic pseudonym with the pseudorandom function named by `prf`.
 
 * Function identifier (`fn_id`): `"pseudonym"`.
 * Source attribute: for `mso_mdoc`, `ssc` (or `psc` when configured); the generation does not use `ssc` or `psc` directly, but their openings (`secret_seed` and `private_seed`). For `bbs_cd`, `secret_seed`.
+* Function type: value function; `return` is REQUIRED.
 * Output: a `PseudonymValue` placed in `results[<handle>]`: 32 bytes for `prf` `sha-256`; for `prf` `hashdh-bls12381g1`, a compressed BLS12-381 G1 point of 48 bytes, which the Verifier processes as it chooses.
 
 A `_req` MUST NOT contain more than one `pseudonym` item. A Wallet Unit MUST treat a request containing more than one as unsatisfiable.
@@ -548,7 +548,8 @@ Zero-knowledge comparison operators operating strictly over the holder's `birth_
 
 * Function identifier (`fn_id`): `"age_check"`.
 * Source attribute: for `mso_mdoc`, `bsc`; the comparison does not use `bsc` directly, but its opening `birth_date`, and asserts `SHA256(secret_seed) == ssc` and `SHA256(secret_seed || birth_date) == bsc`. For `bbs_cd`, `birth_date`.
-* Output: The assertion result `true` placed in `results[<handle>]`.
+* Function type: assertion function; `return` MUST NOT be present.
+* Output: none. The presentation proves that the predicate holds; `results` has no entry for it.
 
 ### Parameters
 
@@ -586,7 +587,7 @@ The following MUST be private: `secret_seed`, `private_seed`, `prover_input`, `b
 
 The following MUST be part of the Verifier's statement: `verifier_input`, the session binding values defined by the registry entry, all function parameter values in `_req`, `proof_time` when validity is checked, and the issuer key set.
 
-The pseudonym and predicate results are public outputs.
+The pseudonym is a public output. Predicates have no output: their parameters are part of the Verifier's statement, and the proof shows that they hold.
 
 ## The `zkp_req` format
 
