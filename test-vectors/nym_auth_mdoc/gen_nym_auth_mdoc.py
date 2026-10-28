@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Deterministic TEST fixture generator for a nym_auth mso_mdoc, compact profile
-(rulebook v0.4 on fix-birthdate: data elements bsc + psc, no ssc).
+(rulebook v0.5: data elements bsc + psc, no ssc).
 
 TEST ONLY: every key below is derived from a public label. Never use them outside tests.
 

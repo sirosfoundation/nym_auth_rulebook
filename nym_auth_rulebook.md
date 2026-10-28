@@ -1,9 +1,9 @@
 ---
 title: "Nym-authentication Attestation Specification and Rulebook"
 author: "Peter Altmann & Frédéric Nieto"
-version: "0.4"
+version: "0.5"
 status: "public draft"
-date: "2026-10-20"
+date: "2026-10-28"
 ---
 
 # Introduction and scope
@@ -257,7 +257,7 @@ Example `vp_token` (presentations shown in CBOR diagnostic notation before encod
 
 ```cbor-diag
 {
-  "system_id": "urn:circuits:longfellow:nym_auth:v1",
+  "system_id": "urn:circuits:sha256:f4d75ee2a112c63adfb00f1da45347c4691085c8cca6ab13cee7b03f00cdbd52",
   "proof": h'...',
   "issuer_key_set": [h'3082...'],
   "proof_time": 0("2026-10-20T12:00:00Z"),
@@ -324,7 +324,7 @@ Over the cross-device redirect flow, the same DCQL and metadata are sent in a Re
           "bbs-cd-plugins-v0.1"
         ],
         "system_id_values": [
-          "urn:circuits:longfellow:nym_auth:v1",
+          "urn:circuits:sha256:f4d75ee2a112c63adfb00f1da45347c4691085c8cca6ab13cee7b03f00cdbd52",
           "urn:circuits:vega:nym_auth:v1",
           "urn:mms:bbs-cd:nym_auth:v1"
         ]
@@ -588,7 +588,7 @@ If the predicate does not hold for the attestation's `birth_date`, the request i
 
 ## Approved systems registry entries
 
-The ecosystem maintains a registry of approved systems: circuits and schemes. Given the attestation type (`eu.europa.ec.eudi.nym_auth.1` or `eu.europa.ec.eudi.nym_auth.bbs.1`), the presentation format (`zkp_req`), and the requested functions in `_req`, the Wallet Unit and Verifier look up an approved system from the registry. Each system MUST have a unique identifier.
+The ecosystem maintains a registry of approved systems: circuits and schemes. Given the attestation type (`eu.europa.ec.eudi.nym_auth.1` or `eu.europa.ec.eudi.nym_auth.bbs.1`), the presentation format (`zkp_req`), and the requested functions in `_req`, the Wallet Unit and Verifier look up an approved system from the registry. Each system MUST have a unique identifier. A circuit's identifier is `urn:circuits:sha256:` followed by the lowercase hex SHA-256 of the circuit artifact exactly as distributed.
 
 Each registry entry MUST specify:
 
@@ -596,6 +596,7 @@ Each registry entry MUST specify:
 * the proof system,
 * the `source_format` and the doctype, schema identifier or vct,
 * the supported functions and parameters, including the pseudonym `prf` values,
+* any function the system requires in every `_req`,
 * the representation of the issuer key set and how many keys it may hold, and
 * the Verifier's statement: for a circuit, the ordered list of public inputs with how the Verifier derives each one; for a scheme, its plugins and how the Verifier derives the scheme's request.
 

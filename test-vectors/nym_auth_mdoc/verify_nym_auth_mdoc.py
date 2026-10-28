@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Independent check of the generated fixtures: parses only the output files, recomputes everything,
-and checks the compact-profile rules (rulebook v0.4 on fix-birthdate: bsc + psc, fixed key orders)."""
+and checks the compact-profile rules (rulebook v0.5: bsc + psc, fixed key orders)."""
 import hashlib, json, pathlib, re, sys
 import cbor2
 from cryptography import x509
