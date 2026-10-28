@@ -631,7 +631,7 @@ The following parameters MAY be used in the `zkp_req` object of `vp_formats_supp
 * `proof_system_values`: OPTIONAL. Non-empty array of proof system identifiers from the approved systems registry.
 * `system_id_values`: OPTIONAL. Non-empty array of unique system identifiers (circuit and scheme identifiers) from the approved systems registry.
 
-When the Verifier provides these parameters, the Wallet Unit MUST select an approved system whose proof system and identifier are both listed, whose `source_format` and type value match the Credential Query, and which supports every item in `_req`; if none exists, the Credential Query is unsatisfiable. The presentation MUST identify the system identifier used.
+When the Verifier provides these parameters, the Wallet Unit MUST select an approved system whose proof system and identifier are both listed, whose `source_format` and type value match the Credential Query, which supports every item in `_req`, and whose required functions are all in `_req`; if none exists, the Credential Query is unsatisfiable. The presentation MUST identify the system identifier used.
 
 ### Capability negotiation
 
