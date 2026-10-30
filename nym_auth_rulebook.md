@@ -1,9 +1,9 @@
 ---
 title: "Nym-authentication Attestation Specification and Rulebook"
 author: "Peter Altmann & Frédéric Nieto"
-version: "0.5"
+version: "0.6"
 status: "public draft"
-date: "2026-10-28"
+date: "2026-10-30"
 ---
 
 # Introduction and scope
@@ -58,7 +58,7 @@ In tables, REQ is short for REQUIRED, OPT is short for OPTIONAL, CON is short fo
 | **birthdate_and_secret_seed_commitment** | `bsc` | `bstr` (32 bytes) | REQ | **Birthdate and Seed Commitment**: $`C = \text{SHA-256}(\text{secret\_seed} \Vert \text{birth\_date})`$ where $`\text{secret\_seed}`$ is a 16-byte random shared secret between the issuer and prover (the issuer known seed), and $`\text{birth\_date}`$ is the holder's date of birth as an RFC 3339 `full-date`. |
 | **private_seed_commitment** | `psc` | `bstr` (32 bytes) | REQ | **Issuer Unknown Seed Commitment**: $`C = \text{SHA-256}(\text{private\_seed})`$ where $`\text{private\_seed}`$ is a 16-byte random value known only to the prover, or 32 zero bytes if the prover has not provided one. |
 
-In the `mso_mdoc` encoding the commitment input `birth_date` is the `full-date` (`YYYY-MM-DD`) as a 10-byte UTF-8 string, without CBOR tag or length prefix; with the 16-byte `secret_seed`, the hash input is 26 bytes. `birth_date` is not itself a data element of the `mso_mdoc` encoding.
+In the `mso_mdoc` encoding the commitment input `birth_date` is the `full-date` (`YYYY-MM-DD`) as a 10-byte UTF-8 string, without CBOR tag or length prefix; with the 16-byte `secret_seed`, the hash input is 26 bytes. `birth_date` is never a data element of the `mso_mdoc` encoding. `bsc` and `psc` are carried either as data elements or as the MSO's digests, depending on the layout (see Layouts).
 
 In the `bbs_cd` encoding the issuer signs the seed itself (`secret_seed`) and the date of birth itself (`birth_date`) as hidden attributes, instead of their commitment `bsc`, and adds the device key as an attribute (`device_key`); `psc` is not defined for `bbs_cd` in this version (see the BBS encoding section).
 
@@ -90,7 +90,22 @@ For ISO/IEC 18013-5 encoded attestations:
 
 For attestations complying with ISO/IEC 18013-5, the Document Type (`docType`) and Namespace MUST both be set to: `eu.europa.ec.eudi.nym_auth.1`
 
-## Attribute encodings and CDDL specification
+## Layouts
+
+An attestation in the `mso_mdoc` encoding uses one of two layouts. Both carry the same values and support the same functions; they differ in where `bsc` and `psc` sit:
+
+| Layout | `bsc` and `psc` | Use |
+| :--- | :--- | :--- |
+| item layout | data elements, each in an `IssuerSignedItem` | standard ISO/IEC 18013-5 issuance |
+| decoy layout | the MSO's digests themselves; no data elements | optimized: fewer SHA-256 blocks in a circuit |
+
+The Wallet Unit MUST hold `secret_seed` and `birth_date` (and `private_seed` when `psc` is not 32 zero bytes) alongside the attestation; their delivery is not defined in this version.
+
+The issuer MUST compute `bsc` with the same `secret_seed` it uses to remap pseudonyms to an identity.
+
+A registry entry for an `mso_mdoc` circuit names the layout it reads. A Wallet Unit selects a system that reads the layout of its attestation.
+
+### Item layout
 
 The complete attribute map for the `eu.europa.ec.eudi.nym_auth.1` namespace MUST conform to the following CDDL specification (RFC 8610):
 
@@ -106,11 +121,20 @@ psc_type = bstr .size 32
 
 Each data element is issued as a separate `IssuerSignedItem` as defined in ISO/IEC 18013-5. `birth_date` is carried only inside `bsc`, as defined in the attribute overview.
 
-The Wallet Unit MUST hold `secret_seed` and `birth_date` (and `private_seed` when `psc` is not 32 zero bytes) alongside the attestation; their delivery is not defined in this version.
+### Decoy layout
 
-The issuer MUST compute `bsc` with the same `secret_seed` it uses to remap pseudonyms to an identity.
+In the decoy layout the attestation contains no data elements: `IssuerSigned` has no `nameSpaces`, and the MSO's `valueDigests` for the `eu.europa.ec.eudi.nym_auth.1` namespace holds `bsc` and `psc` themselves:
 
-Approved circuits for `mso_mdoc` MUST accept any encoding of these data elements and of the MSO that conforms to ISO/IEC 18013-5.
+```cddl
+nym_auth_value_digests = {
+  0 => bsc_type,      ; bsc = SHA-256(secret_seed || birth_date)
+  1 => psc_type       ; psc = SHA-256(private_seed), or 32 zero bytes
+}
+```
+
+Each digest is a commitment whose opening the Wallet Unit holds, not the digest of an `IssuerSignedItem`. An attestation in the decoy layout MUST conform to the compact profile.
+
+> **NOTE:** ISO/IEC 18013-5 requires a digest for each data element present (9.1.2.5) and does not define digests without a data element. `nameSpaces` is optional in `IssuerSigned` (8.3.2.1.2.2), and a reader verifies only the data elements it receives. A reader that follows ISO/IEC 18013-5 verifies `issuerAuth` of a decoy-layout attestation and finds no data elements.
 
 ## Compact profile
 
@@ -127,12 +151,14 @@ An attestation conforms to the compact profile if, in addition to ISO/IEC 18013-
   * MSO: `version`, `digestAlgorithm`, `docType`, `valueDigests`, `deviceKeyInfo`, `validityInfo`;
   * `deviceKeyInfo`: `deviceKey`;
   * `validityInfo`: `signed`, `validFrom`, `validUntil`;
-  * `IssuerSignedItem`: `digestID`, `random`, `elementIdentifier`, `elementValue`;
+  * `IssuerSignedItem` (item layout): `digestID`, `random`, `elementIdentifier`, `elementValue`;
   * `deviceKey`: 1 (kty = 2), −1 (crv = 1), −2 (x), −3 (y), with x and y each a 32-byte `bstr`.
+
+In both layouts the MSO of a compact-profile attestation is 398 bytes, and the first 128 bytes of the `issuerAuth` `Sig_structure` are the same for every attestation. A circuit MAY start SHA-256 from the state after those bytes, `3f5dcfbc cbd48de1 3d035a41 970caaf1 81b81cb5 d02831c8 02994fba 56c9b760`, instead of hashing them.
 
 Issuers SHOULD issue attestations conforming to the compact profile.
 
-A registry entry MAY target the compact profile. The registry MUST contain at least one approved circuit that supports every function and configuration defined in this document for `mso_mdoc` and accepts any ISO/IEC 18013-5 conformant encoding. A Wallet Unit SHOULD use a compact-profile circuit when its attestation conforms and the Verifier accepts one.
+A registry entry MAY target the compact profile. The registry MUST contain, for each layout, at least one approved circuit that supports every function and configuration defined in this document for `mso_mdoc`; for the item layout, at least one such circuit MUST accept any ISO/IEC 18013-5 conformant encoding. A Wallet Unit SHOULD use a compact-profile circuit when its attestation conforms and the Verifier accepts one.
 
 # BBS committed-disclosure encoding (`bbs_cd`)
 
@@ -325,6 +351,7 @@ Over the cross-device redirect flow, the same DCQL and metadata are sent in a Re
         ],
         "system_id_values": [
           "urn:circuits:sha256:f4d75ee2a112c63adfb00f1da45347c4691085c8cca6ab13cee7b03f00cdbd52",
+          "urn:circuits:sha256:5d7d2b5d094032df5b02f576d2ae7b99d3f0932d47516336693f8d670cfd63ac",
           "urn:circuits:vega:nym_auth:v1",
           "urn:mms:bbs-cd:nym_auth:v1"
         ]
@@ -594,7 +621,7 @@ Each registry entry MUST specify:
 
 * the system identifier,
 * the proof system,
-* the `source_format` and the doctype, schema identifier or vct,
+* the `source_format` and the doctype, schema identifier or vct, and for `mso_mdoc` the layout,
 * the supported functions and parameters, including the pseudonym `prf` values,
 * any function the system requires in every `_req`,
 * the representation of the issuer key set and how many keys it may hold, and
