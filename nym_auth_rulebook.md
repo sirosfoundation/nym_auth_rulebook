@@ -1,9 +1,9 @@
 ---
 title: "Nym-authentication Attestation Specification and Rulebook"
 author: "Peter Altmann & Frédéric Nieto"
-version: "0.6"
+version: "0.7"
 status: "public draft"
-date: "2026-10-30"
+date: "2026-11-02"
 ---
 
 # Introduction and scope
@@ -55,10 +55,14 @@ In tables, REQ is short for REQUIRED, OPT is short for OPTIONAL, CON is short fo
 
 | Data Identifier | Attribute Identifier | CBOR / CDDL Representation | Presence | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **birthdate_and_secret_seed_commitment** | `bsc` | `bstr` (32 bytes) | REQ | **Birthdate and Seed Commitment**: $`C = \text{SHA-256}(\text{secret\_seed} \Vert \text{birth\_date})`$ where $`\text{secret\_seed}`$ is a 16-byte random shared secret between the issuer and prover (the issuer known seed), and $`\text{birth\_date}`$ is the holder's date of birth as an RFC 3339 `full-date`. |
-| **private_seed_commitment** | `psc` | `bstr` (32 bytes) | REQ | **Issuer Unknown Seed Commitment**: $`C = \text{SHA-256}(\text{private\_seed})`$ where $`\text{private\_seed}`$ is a 16-byte random value known only to the prover, or 32 zero bytes if the prover has not provided one. |
+| **birthdate_and_secret_seed_commitment** | `bsc` | `bstr` (32 bytes) | REQ | **Birthdate and Seed Commitment**: `AES-128-Enc(secret_seed, "nym/b" ‖ 0x01 ‖ birth_date) ‖ AES-128-Enc(secret_seed, "nym/b" ‖ 0x02 ‖ 0x00×10)`, where `secret_seed` is a 16-byte random secret sampled by the issuer and shared with the prover (the issuer known seed), and `birth_date` is the holder's date of birth as an RFC 3339 `full-date`. |
+| **private_seed_commitment** | `psc` | `bstr` (32 bytes) | REQ | **Issuer Unknown Seed Commitment**: `AES-128-Enc(private_seed, "nym/p" ‖ 0x01 ‖ 0x00×10) ‖ AES-128-Enc(private_seed, "nym/p" ‖ 0x02 ‖ 0x00×10)`, where `private_seed` is a 16-byte random value sampled by the prover and known only to it; the prover computes `psc` and sends it to the issuer. 32 zero bytes if the prover has not provided one. |
 
-In the `mso_mdoc` encoding the commitment input `birth_date` is the `full-date` (`YYYY-MM-DD`) as a 10-byte UTF-8 string, without CBOR tag or length prefix; with the 16-byte `secret_seed`, the hash input is 26 bytes. `birth_date` is never a data element of the `mso_mdoc` encoding. `bsc` and `psc` are carried either as data elements or as the MSO's digests, depending on the layout (see Layouts).
+`AES-128-Enc(k, b)` is the AES-128 block cipher (FIPS 197) applied to one 16-byte block `b` under the 16-byte key `k`, without a mode of operation. `"nym/b"` and `"nym/p"` are 5 ASCII bytes, and `birth_date` is the `full-date` (`YYYY-MM-DD`) as 10 ASCII bytes without CBOR tag or length prefix, so each block is 16 bytes.
+
+> **NOTE:** The constant second block of each commitment fixes the key: finding another key that gives the same block takes about 2^128 work. With the key fixed, the first block of `bsc` determines `birth_date` exactly, since AES is a permutation for each key.
+
+In the `mso_mdoc` encoding `bsc` and `psc` are the MSO's digests (see Decoy-digest layout); `birth_date` is never a data element.
 
 In the `bbs_cd` encoding the issuer signs the seed itself (`secret_seed`) and the date of birth itself (`birth_date`) as hidden attributes, instead of their commitment `bsc`, and adds the device key as an attribute (`device_key`); `psc` is not defined for `bbs_cd` in this version (see the BBS encoding section).
 
@@ -86,62 +90,41 @@ For ISO/IEC 18013-5 encoded attestations:
 
 # ISO/IEC 18013-5 compliant encoding
 
-## Document type and Namespace
+## Document type and namespace
 
-For attestations complying with ISO/IEC 18013-5, the Document Type (`docType`) and Namespace MUST both be set to: `eu.europa.ec.eudi.nym_auth.1`
+For attestations complying with ISO/IEC 18013-5, the Document Type (`docType`) MUST be `eu.europa.ec.eudi.nym_auth.1`, and the namespace in the MSO's `valueDigests` MUST be `eu.nym_auth.v1`.
 
-## Layouts
+> **NOTE:** The namespace is short on purpose. With 9 to 14 characters, the first holder-specific byte of the `issuerAuth` `Sig_structure` lies after its first two SHA-256 blocks, and the whole structure fits in six blocks (see Compact profile).
 
-An attestation in the `mso_mdoc` encoding uses one of two layouts. Both carry the same values and support the same functions; they differ in where `bsc` and `psc` sit:
+## Decoy-digest layout
 
-| Layout | `bsc` and `psc` | Use |
-| :--- | :--- | :--- |
-| item layout | data elements, each in an `IssuerSignedItem` | standard ISO/IEC 18013-5 issuance |
-| decoy layout | the MSO's digests themselves; no data elements | optimized: fewer SHA-256 blocks in a circuit |
-
-The Wallet Unit MUST hold `secret_seed` and `birth_date` (and `private_seed` when `psc` is not 32 zero bytes) alongside the attestation; their delivery is not defined in this version.
-
-The issuer MUST compute `bsc` with the same `secret_seed` it uses to remap pseudonyms to an identity.
-
-A registry entry for an `mso_mdoc` circuit names the layout it reads. A Wallet Unit selects a system that reads the layout of its attestation.
-
-### Item layout
-
-The complete attribute map for the `eu.europa.ec.eudi.nym_auth.1` namespace MUST conform to the following CDDL specification (RFC 8610):
+The attestation contains no data elements: `IssuerSigned` has no `nameSpaces`, and the MSO's `valueDigests` for the `eu.nym_auth.v1` namespace holds `bsc` and `psc` themselves:
 
 ```cddl
-nym_auth_namespace = {
-  "bsc"       => bsc_type,
-  "psc"       => psc_type
+nym_auth_value_digests = {
+  0 => bsc_type,      ; bsc, as defined in the attribute overview
+  1 => psc_type       ; psc, or 32 zero bytes
 }
 
 bsc_type = bstr .size 32
 psc_type = bstr .size 32
 ```
 
-Each data element is issued as a separate `IssuerSignedItem` as defined in ISO/IEC 18013-5. `birth_date` is carried only inside `bsc`, as defined in the attribute overview.
+Each digest is a commitment whose opening the Wallet Unit holds, not the digest of an `IssuerSignedItem`. An attestation MUST conform to the compact profile.
 
-### Decoy layout
+The Wallet Unit MUST hold `secret_seed` and `birth_date` (and `private_seed` when `psc` is not 32 zero bytes) alongside the attestation; their delivery is not defined in this version.
 
-In the decoy layout the attestation contains no data elements: `IssuerSigned` has no `nameSpaces`, and the MSO's `valueDigests` for the `eu.europa.ec.eudi.nym_auth.1` namespace holds `bsc` and `psc` themselves:
+The issuer MUST compute `bsc` with the same `secret_seed` it uses to remap pseudonyms to an identity.
 
-```cddl
-nym_auth_value_digests = {
-  0 => bsc_type,      ; bsc = SHA-256(secret_seed || birth_date)
-  1 => psc_type       ; psc = SHA-256(private_seed), or 32 zero bytes
-}
-```
+> **NOTE:** ISO/IEC 18013-5 requires a digest for each data element present (9.1.2.5) and does not define digests without a data element. `nameSpaces` is optional in `IssuerSigned` (8.3.2.1.2.2), and a reader verifies only the data elements it receives. A reader that follows ISO/IEC 18013-5 verifies `issuerAuth` and finds no data elements.
 
-Each digest is a commitment whose opening the Wallet Unit holds, not the digest of an `IssuerSignedItem`. An attestation in the decoy layout MUST conform to the compact profile.
-
-> **NOTE:** ISO/IEC 18013-5 requires a digest for each data element present (9.1.2.5) and does not define digests without a data element. `nameSpaces` is optional in `IssuerSigned` (8.3.2.1.2.2), and a reader verifies only the data elements it receives. A reader that follows ISO/IEC 18013-5 verifies `issuerAuth` of a decoy-layout attestation and finds no data elements.
+> **NOTE:** The item layout of versions 0.5 and 0.6, with `bsc` and `psc` as `IssuerSignedItem`s, is not part of this version.
 
 ## Compact profile
 
 An attestation conforms to the compact profile if, in addition to ISO/IEC 18013-5:
 
-* it contains only the data elements defined in this document;
-* each `random` value is 16 bytes;
+* `IssuerSigned` contains only `issuerAuth`;
 * `bsc` has `digestID` 0 and `psc` `digestID` 1;
 * the MSO contains no optional members;
 * `validityInfo` values have the form `YYYY-MM-DDTHH:MM:SSZ`;
@@ -151,14 +134,13 @@ An attestation conforms to the compact profile if, in addition to ISO/IEC 18013-
   * MSO: `version`, `digestAlgorithm`, `docType`, `valueDigests`, `deviceKeyInfo`, `validityInfo`;
   * `deviceKeyInfo`: `deviceKey`;
   * `validityInfo`: `signed`, `validFrom`, `validUntil`;
-  * `IssuerSignedItem` (item layout): `digestID`, `random`, `elementIdentifier`, `elementValue`;
-  * `deviceKey`: 1 (kty = 2), −1 (crv = 1), −2 (x), −3 (y), with x and y each a 32-byte `bstr`.
+  * `deviceKey`: 1 (kty = 2), −1 (crv = 1), −2 (x, a 32-byte `bstr`), −3 (y in compressed form: `true` if y is odd, `false` if y is even).
 
-In both layouts the MSO of a compact-profile attestation is 398 bytes, and the first 128 bytes of the `issuerAuth` `Sig_structure` are the same for every attestation. A circuit MAY start SHA-256 from the state after those bytes, `3f5dcfbc cbd48de1 3d035a41 970caaf1 81b81cb5 d02831c8 02994fba 56c9b760`, instead of hashing them.
+> **NOTE:** ISO/IEC 18013-5 explicitly allows the compressed form for the ephemeral `EDeviceKey` (9.1.5.2). For `deviceKey` it refers to RFC 8152 (9.1.2.4), which allows a boolean y.
 
-Issuers SHOULD issue attestations conforming to the compact profile.
+With these rules the MSO is 350 bytes and the `issuerAuth` `Sig_structure` is 375 bytes, six SHA-256 blocks. Its first 133 bytes are the same for every attestation, so a circuit MAY start SHA-256 from the state after the first 128 bytes, `febc8c27 7c5c6819 24462151 3093dd16 7da7b2c2 b3a3340b 9fdcd160 bba633fd`, and hash the remaining four blocks.
 
-A registry entry MAY target the compact profile. The registry MUST contain, for each layout, at least one approved circuit that supports every function and configuration defined in this document for `mso_mdoc`; for the item layout, at least one such circuit MUST accept any ISO/IEC 18013-5 conformant encoding. A Wallet Unit SHOULD use a compact-profile circuit when its attestation conforms and the Verifier accepts one.
+The registry MUST contain at least one approved circuit that supports every function and configuration defined in this document for `mso_mdoc`.
 
 # BBS committed-disclosure encoding (`bbs_cd`)
 
@@ -264,7 +246,7 @@ To verify a presentation, the Verifier:
 
 1. looks up `system_id` in the approved systems registry and confirms it is one it accepts and offered;
 2. validates `issuer_key_set` as the registry entry defines;
-3. assembles its statement as the registry entry defines, taking `issuer_key_set`, `proof_time` and the values in `results` from the presentation and computing everything else itself (session binding values, `verifier_input`, the `_req` parameters it sent, and the `age_check` bounds E and C from `range` and `proof_time`): for a circuit, the public inputs in the registry's order; for a scheme, the scheme's request;
+3. assembles its statement as the registry entry defines, taking `issuer_key_set`, `proof_time` and the values in `results` from the presentation and computing everything else itself (session binding values, `verifier_input`, the `_req` parameters it sent, the `age_check` bounds E and C from `range` and `proof_time`, and, for `prf` `aes-128`, H): for a circuit, the public inputs in the registry's order; for a scheme, the scheme's request;
 4. verifies `proof` against the system and that statement, and confirms that the proof establishes each value in `results` and each assertion in `_req`.
 
 The Verifier MUST NOT take any part of its statement from the presentation other than `issuer_key_set`, `proof_time` and `results`.
@@ -283,7 +265,7 @@ Example `vp_token` (presentations shown in CBOR diagnostic notation before encod
 
 ```cbor-diag
 {
-  "system_id": "urn:circuits:sha256:f4d75ee2a112c63adfb00f1da45347c4691085c8cca6ab13cee7b03f00cdbd52",
+  "system_id": "urn:circuits:sha256:<SHA-256 of the v0.7 circuit artifact>",
   "proof": h'...',
   "issuer_key_set": [h'3082...'],
   "proof_time": 0("2026-10-20T12:00:00Z"),
@@ -350,8 +332,7 @@ Over the cross-device redirect flow, the same DCQL and metadata are sent in a Re
           "bbs-cd-plugins-v0.1"
         ],
         "system_id_values": [
-          "urn:circuits:sha256:f4d75ee2a112c63adfb00f1da45347c4691085c8cca6ab13cee7b03f00cdbd52",
-          "urn:circuits:sha256:5d7d2b5d094032df5b02f576d2ae7b99d3f0932d47516336693f8d670cfd63ac",
+          "urn:circuits:sha256:<SHA-256 of the v0.7 circuit artifact>",
           "urn:circuits:vega:nym_auth:v1",
           "urn:mms:bbs-cd:nym_auth:v1"
         ]
@@ -374,7 +355,7 @@ Over the cross-device redirect flow, the same DCQL and metadata are sent in a Re
             "params": {
               "config": "known-offender-matching-ssc",
               "ver": 1,
-              "prf": "sha-256"
+              "prf": "aes-128"
             }
           },
           {
@@ -448,7 +429,7 @@ Derives a deterministic pseudonym with the pseudorandom function named by `prf`.
 * Function identifier (`fn_id`): `"pseudonym"`.
 * Source attribute: for `mso_mdoc`, `bsc` for issuer-known-seed configurations and `psc` for private-seed configurations; the generation does not use `bsc` or `psc` directly, but the seed from their openings (`secret_seed` from `bsc`, `private_seed` from `psc`). For `bbs_cd`, `secret_seed`.
 * Function type: value function; `return` is REQUIRED.
-* Output: a `PseudonymValue` placed in `results[<handle>]`: 32 bytes for `prf` `sha-256`; for `prf` `hashdh-bls12381g1`, a compressed BLS12-381 G1 point of 48 bytes, which the Verifier processes as it chooses.
+* Output: a `PseudonymValue` placed in `results[<handle>]`: 32 bytes for `prf` `sha-256` and `aes-128`; for `prf` `hashdh-bls12381g1`, a compressed BLS12-381 G1 point of 48 bytes, which the Verifier processes as it chooses.
 
 A `_req` MUST NOT contain more than one `pseudonym` item. A Wallet Unit MUST treat a request containing more than one as unsatisfiable.
 
@@ -479,7 +460,7 @@ This specification version enables the following function parameters.
 | :-- | :-- | :-- | :-- | :-- |
 | `config` | string | REQ | Identifier for standard configurations. | Allowed values are specified in the configurations below. |
 | `ver` | integer | REQ | Version of the pseudonym function. | `1` in this version. |
-| `prf` | string | REQ | The pseudorandom function. | `sha-256` (`mso_mdoc`, every configuration) or `hashdh-bls12381g1` (`bbs_cd`, `known-offender-matching-ssc` only). |
+| `prf` | string | REQ | The pseudorandom function. | `sha-256` (`mso_mdoc`, every configuration), `aes-128` (`mso_mdoc`; `known-offender-matching-ssc`, `known-offender-matching-psc` and `account-recovery-ssc`) or `hashdh-bls12381g1` (`bbs_cd`, `known-offender-matching-ssc` only). |
 | `verifier_context` | string | CON | Additional context supplied by the verifier. | Required for account recovery. MUST NOT be present elsewhere. 1 to 64 bytes in its UTF-8 encoding, hashed as sent, without normalization. |
 
 A Wallet Unit MUST treat the request as unsatisfiable if `verifier_context` is absent for a configuration that requires it, present for a configuration that does not allow it, or longer than 64 bytes.
@@ -488,7 +469,7 @@ A Wallet Unit MUST treat the request as unsatisfiable if `ver` is not `1`, or if
 
 ### Configurations
 
-With `prf` `sha-256`, all configurations generate the pseudonym as: `pseudonym = SHA256(DST || {secret, private}_seed || prover_input || verifier_input)`. The `config` determines which seed source to use. The `DST` is set to `nym_auth/v1/<config>` (UTF-8 encoded) for `ver` 1. The verifier MUST recompute and supply its own public inputs to the proof verification. `prf` `hashdh-bls12381g1` is defined after the configurations.
+With `prf` `sha-256`, all configurations generate the pseudonym as: `pseudonym = SHA256(DST || {secret, private}_seed || prover_input || verifier_input)`. The `config` determines which seed source to use. The `DST` is set to `nym_auth/v1/<config>` (UTF-8 encoded) for `ver` 1. The verifier MUST recompute and supply its own public inputs to the proof verification. `prf` `aes-128` and `prf` `hashdh-bls12381g1` are defined after the configurations.
 
 `known-offender-matching-ssc` is defined for `mso_mdoc` and `bbs_cd`; the other configurations for `mso_mdoc` only.
 
@@ -496,9 +477,9 @@ With `prf` `sha-256`, all configurations generate the pseudonym as: `pseudonym =
 
 The `known-offender-matching-ssc` configuration is defined as follows:
 
-1. For `mso_mdoc`, the circuit asserts `SHA256(secret_seed || birth_date) == bsc`, with `birth_date` the 10-byte `full-date` held by the Wallet Unit; generation uses `secret_seed`. For `bbs_cd`, generation uses the `secret_seed` attribute directly.
-2. With `prf` `sha-256`, `prover_input` is null (32 zero bytes). `hashdh-bls12381g1` takes no `prover_input` in this version.
-3. `verifier_input` is `SHA256(verifier_id)` with `prf` `sha-256`, and `UTF-8(verifier_id)` with `prf` `hashdh-bls12381g1`, with `verifier_id` as defined in the Verifier identity subsection.
+1. For `mso_mdoc`, the circuit opens `bsc` with `secret_seed` and `birth_date` (see the attribute overview); generation uses `secret_seed`. For `bbs_cd`, generation uses the `secret_seed` attribute directly.
+2. With `prf` `sha-256` or `aes-128`, `prover_input` is null (32 zero bytes). `hashdh-bls12381g1` takes no `prover_input` in this version.
+3. `verifier_input` is `SHA256(verifier_id)` with `prf` `sha-256` or `aes-128`, and `UTF-8(verifier_id)` with `prf` `hashdh-bls12381g1`, with `verifier_id` as defined in the Verifier identity subsection.
 
 The configuration's properties are as follows:
 
@@ -512,7 +493,7 @@ The configuration's properties are as follows:
 
 #### `known-offender-matching-psc`
 
-1. For `mso_mdoc`, the `psc` (issuer unknown seed commitment) value from the `nym_auth` attestation is used to assert `SHA256(private_seed) == psc`; generation uses `private_seed`. If `psc` is 32 zero bytes, the Wallet Unit MUST treat the request as unsatisfiable.
+1. For `mso_mdoc`, the circuit opens `psc` with `private_seed` (see the attribute overview); generation uses `private_seed`. If `psc` is 32 zero bytes, the Wallet Unit MUST treat the request as unsatisfiable.
 2. `prover_input` is null (32 zero bytes).
 3. `verifier_input` is `SHA256(verifier_id)`, with `verifier_id` as defined in the Verifier identity subsection.
 
@@ -528,7 +509,7 @@ The configuration's properties are as follows:
 
 #### `account-recovery-ssc`
 
-1. For `mso_mdoc`, the circuit asserts `SHA256(secret_seed || birth_date) == bsc`, with `birth_date` the 10-byte `full-date` held by the Wallet Unit; generation uses `secret_seed`.
+1. For `mso_mdoc`, the circuit opens `bsc` with `secret_seed` and `birth_date` (see the attribute overview); generation uses `secret_seed`.
 2. `prover_input` is null (32 zero bytes).
 3. `verifier_input` is `SHA256(SHA256(verifier_id) || SHA256(verifier_context))`, with `verifier_id` as defined in the Verifier identity subsection and `verifier_context` UTF-8 encoded as supplied by the Verifier.
 
@@ -541,7 +522,7 @@ The configuration's properties are as follows:
 
 #### `user-managed-pseudonym-xsite-ssc`
 
-1. For `mso_mdoc`, the circuit asserts `SHA256(secret_seed || birth_date) == bsc`, with `birth_date` the 10-byte `full-date` held by the Wallet Unit; generation uses `secret_seed`.
+1. For `mso_mdoc`, the circuit opens `bsc` with `secret_seed` and `birth_date` (see the attribute overview); generation uses `secret_seed`.
 2. `prover_input` is the SHA256 digest of a user-supplied value; shared across the sites the user wants to be linked across.
 3. `verifier_input` is null (32 zero bytes).
 
@@ -554,6 +535,22 @@ The configuration's properties are as follows:
   sufficient entropy.
 * Does not offer sybil resistance.
 * Does not support known offender matching.
+
+### PRF `aes-128`
+
+Defined for `source_format` `mso_mdoc` with the configurations `known-offender-matching-ssc`, `known-offender-matching-psc` and `account-recovery-ssc`, whose `prover_input` is public. It is not defined for `user-managed-pseudonym-xsite-ssc`.
+
+```
+H         = SHA-256(DST || prover_input || verifier_input)
+pseudonym = AES-128-Enc(seed, H[0..16]) || AES-128-Enc(seed, H[16..32])
+```
+
+* `DST` is `"nym_auth/v1/aes-128/"` followed by the configuration identifier, UTF-8 encoded, for `ver` 1.
+* `prover_input` and `verifier_input` are as the configuration defines them.
+* `seed` is `secret_seed` for the `-ssc` configurations and `private_seed` for `known-offender-matching-psc`.
+* The Verifier computes H itself, outside the proof; H is part of its statement. The proof shows that the pseudonym is the encryption of H's two halves under the seed that opens `bsc` or `psc`.
+
+AES-128 is used as a pseudorandom function keyed by the seed. The pseudonym values differ from those of `prf` `sha-256`.
 
 ### PRF `hashdh-bls12381g1`
 
@@ -577,7 +574,7 @@ The `pseudonym/0.1` plugin proves that `pseudonym` is computed from the committe
 Proves that the Holder's age in whole years lies in a range, by comparison over the holder's `birth_date` (the `full-date` committed in `bsc` for `mso_mdoc`, the `date-packed` attribute for `bbs_cd`).
 
 * Function identifier (`fn_id`): `"age_check"`.
-* Source attribute: for `mso_mdoc`, `bsc`; the comparison does not use `bsc` directly, but its opening `birth_date`, and asserts `SHA256(secret_seed || birth_date) == bsc`. For `bbs_cd`, `birth_date`.
+* Source attribute: for `mso_mdoc`, `bsc`; the comparison does not use `bsc` directly, but its opening `birth_date`, and opens `bsc` with `secret_seed` and `birth_date` (see the attribute overview). For `bbs_cd`, `birth_date`.
 * Function type: assertion function; `return` MUST NOT be present.
 * Output: none. The presentation proves that the predicate holds; `results` has no entry for it.
 
@@ -621,17 +618,19 @@ Each registry entry MUST specify:
 
 * the system identifier,
 * the proof system,
-* the `source_format` and the doctype, schema identifier or vct, and for `mso_mdoc` the layout,
+* the `source_format` and the doctype, schema identifier or vct, and for `mso_mdoc` the version of this rulebook whose attestations it reads,
 * the supported functions and parameters, including the pseudonym `prf` values,
 * any function the system requires in every `_req`,
 * the representation of the issuer key set and how many keys it may hold, and
 * the Verifier's statement: for a circuit, the ordered list of public inputs with how the Verifier derives each one; for a scheme, its plugins and how the Verifier derives the scheme's request.
 
+Attestations of different versions of this rulebook share the `docType`. A Wallet Unit selects a system whose registry entry names the version of its attestation.
+
 ## Input and output classification
 
-The following MUST be private: `secret_seed`, `private_seed`, `prover_input`, `birth_date`, all issuer-signed data and digests, the issuer signature, the device public key and device signature.
+The following MUST be private: `secret_seed`, `private_seed`, `prover_input` where it is not a constant, `birth_date`, all issuer-signed data and digests, the issuer signature, the device public key and device signature.
 
-The following MUST be part of the Verifier's statement: `verifier_input`, the session binding values defined by the registry entry, all function parameter values in `_req` (for `age_check`, the bounds E and C), `proof_time` when validity is checked or `age_check` is requested, and the issuer key set.
+The following MUST be part of the Verifier's statement: `verifier_input`, the session binding values defined by the registry entry, all function parameter values in `_req` (for `age_check`, the bounds E and C), `proof_time` when validity is checked or `age_check` is requested, for `prf` `aes-128` the value H, and the issuer key set.
 
 The pseudonym is a public output. Predicates have no output: their parameters are part of the Verifier's statement, and the proof shows that they hold.
 
