@@ -3,7 +3,7 @@ title: "OpenID for Verifiable Credential Issuance: Credential Auxiliary Data"
 author: "Peter Altmann & Frédéric Nieto"
 version: "0.1"
 status: "draft"
-date: "2026-10-22"
+date: "2026-11-03"
 ---
 
 # 1. Introduction
@@ -17,7 +17,7 @@ never presented. Two examples:
 
 This specification defines `auxiliary_data` for such data. It is an array of typed
 entries, and one issuance can use several types. This specification defines the type
-`hash_commitment`.
+`commitment`.
 
 ## 1.1 Requirements Notation and Conventions
 
@@ -55,7 +55,8 @@ An Auxiliary Data Entry has the following parameter:
 The Auxiliary Data Type defines all other parameters.
 
 `auxiliary_data` is a non-empty array of Auxiliary Data Entries. It contains at most one
-entry per `type` and `path`. A recipient MUST ignore entries of an unrecognized `type`.
+entry per `type` and location (`path` or `value_digest`, Section 4.1). A recipient MUST ignore
+entries of an unrecognized `type`.
 
 # 4. Auxiliary Data Types
 
@@ -66,20 +67,25 @@ An Auxiliary Data Type definition specifies:
 * the checks the recipient performs;
 * whether entries sent by the Wallet may travel in a Key Attestation.
 
-## 4.1 `hash_commitment`
+## 4.1 `commitment`
 
-A hash commitment to a secret byte string. The Credential contains the commitment as a claim. The
-secret is its opening. The Credential Configuration defines how long the secret is and how it is
-generated. The secret MUST have at least 128 bits of entropy.
+A commitment to a secret byte string, its opening. The Credential contains the commitment as a
+claim or as an mdoc value digest. The Credential Configuration defines how long the opening is and
+how it is generated. The opening MUST have at least 128 bits of entropy.
 
 Parameters:
 
-* `alg`: REQUIRED. The hash function. This specification defines `sha-256`.
-* `path`: REQUIRED. Claims path pointer (Appendix C of [OpenID4VCI]) that selects exactly one
+* `alg`: REQUIRED. The commitment function. It defines the opening and computes the commitment from
+  it. This specification defines `sha-256`: the commitment is the SHA-256 hash of the opening. The
+  specification of a Credential's type MAY define further values.
+* `path`: CONDITIONAL. Claims path pointer (Appendix C of [OpenID4VCI]) that selects exactly one
   claim: the claim that holds the commitment.
-* `encoding`: OPTIONAL in metadata. MUST be absent otherwise. How the claim at `path` represents
-  the commitment. This specification defines these values, where the claim is a string holding
-  the commitment:
+* `value_digest`: CONDITIONAL. For an mdoc, the entry of the MSO's `valueDigests` that holds the
+  commitment itself, with no data element. It is an object with two members: `namespace`, the
+  namespace as a string, and `digest_id`, the `digestID` as an integer.
+* `encoding`: OPTIONAL in metadata with `path`. MUST be absent otherwise. How the claim at `path`
+  represents the commitment. This specification defines these values, where the claim is a string
+  holding the commitment:
   * `base64url`: base64url-encoded;
   * `base64`: base64-encoded with padding (Section 4 of [RFC4648]);
   * `hex`: lowercase hexadecimal.
@@ -87,13 +93,14 @@ Parameters:
   When `encoding` is absent, the claim holds the commitment's bytes, such as an mdoc `bstr` data
   element. Other specifications MAY define further values.
 * `opening`: REQUIRED when the Credential Issuer sends the entry in a response. MUST be absent
-  otherwise. The base64url-encoded secret. It is a Secret Value.
+  otherwise. The base64url-encoded opening. It is a Secret Value.
 * `commitment`: REQUIRED when the Wallet sends the entry in a key proof. MUST be absent otherwise.
   The base64url-encoded commitment.
 
-The commitment is the `alg` hash of the opening.
+An entry has exactly one of `path` and `value_digest`. Its location is the claim at `path`, or the
+value digest at `value_digest`.
 
-A Wallet that does not recognize the `encoding` of an entry:
+A Wallet that does not recognize the `alg` or the `encoding` of an entry:
 
 * MUST NOT request the Credential when the entry is in `to_wallet`, or in `to_issuer` with
   `required` `true`;
@@ -101,11 +108,12 @@ A Wallet that does not recognize the `encoding` of an entry:
 
 Checks:
 
-* **From the Credential Issuer.** The Wallet MUST check that the hash of the `opening` equals the
-  commitment the claim at `path` represents.
-* **From the Wallet.** The Credential Issuer MUST check that `commitment` has the output length of
-  `alg`. It writes `commitment` to the claim at `path`. After issuance, the Wallet MUST check
-  that this claim holds its commitment.
+* **From the Credential Issuer.** The Wallet MUST check that `alg` computes, from the `opening`, the
+  commitment that the entry's location holds.
+* **From the Wallet.** The Wallet sends the commitment in the key proofs of its Credential Request
+  (Section 6). The Credential Issuer MUST check that `commitment` has the output length of `alg`. It
+  writes `commitment` at the entry's location. After issuance, the Wallet MUST check that this
+  location holds its commitment.
 
 Entries sent by the Wallet MAY travel in a Key Attestation. The commitment reveals no more about
 the Holder than the attested keys.
@@ -120,24 +128,25 @@ This specification defines the following parameter for the objects of
   carries the parameters its Auxiliary Data Type defines for metadata.
   * `to_wallet`: OPTIONAL. Non-empty array of the entries the Credential Issuer sends in each
     response that carries Credentials (Section 7).
-  * `to_issuer`: OPTIONAL. Non-empty array of the entries the Credential Issuer accepts in key
-    proofs. An entry MAY contain `required` (Boolean, default `false`). When `required` is `true`,
-    the Wallet MUST send the entry, and MUST recognize its type before it requests the Credential.
+  * `to_issuer`: OPTIONAL. Non-empty array of the entries the Credential Issuer accepts in the key
+    proofs of a Credential Request (Section 6). An entry MAY contain `required` (Boolean, default
+    `false`). When `required` is `true`, the Wallet MUST send the entry, and MUST recognize its type
+    before it requests the Credential.
 
 Below is a non-normative example of a Credential Configuration with this parameter:
 
 ```json
-"eu.europa.ec.eudi.nym_auth.1": {
+"org.example.membership.1": {
   "format": "mso_mdoc",
-  "doctype": "eu.europa.ec.eudi.nym_auth.1",
+  "doctype": "org.example.membership.1",
   "auxiliary_data_supported": {
     "to_wallet": [
-      { "type": "hash_commitment", "alg": "sha-256",
-        "path": ["eu.europa.ec.eudi.nym_auth.1", "ssc"] }
+      { "type": "commitment", "alg": "sha-256",
+        "path": ["org.example.membership.1", "member_commitment"] }
     ],
     "to_issuer": [
-      { "type": "hash_commitment", "alg": "sha-256",
-        "path": ["eu.europa.ec.eudi.nym_auth.1", "psc"] }
+      { "type": "commitment", "alg": "sha-256",
+        "value_digest": { "namespace": "org.example.membership.1", "digest_id": 1 } }
     ]
   }
 }
@@ -146,8 +155,8 @@ Below is a non-normative example of a Credential Configuration with this paramet
 # 6. Auxiliary Data in Key Proofs
 
 When the Wallet sends entries, it places `auxiliary_data` in the signed part of each key
-proof (Appendix F of [OpenID4VCI]). In the examples, the commitment is SHA-256 of the 16-byte secret
-`8f3b2c9e41d07a65b1e2f4c3d9a08176` (hex).
+proof (Appendix F of [OpenID4VCI]). In the examples, the commitment is the SHA-256 of the 16-byte
+opening `8f3b2c9e41d07a65b1e2f4c3d9a08176` (hex).
 
 ## 6.1 `jwt` Proof Type
 
@@ -174,9 +183,9 @@ Below is a non-normative example of a decoded key proof JWT:
   "nonce": "LarRGSbmUPYtRYO6BQ4yn8",
   "auxiliary_data": [
     {
-      "type": "hash_commitment",
+      "type": "commitment",
       "alg": "sha-256",
-      "path": ["eu.europa.ec.eudi.nym_auth.1", "psc"],
+      "value_digest": { "namespace": "org.example.membership.1", "digest_id": 1 },
       "commitment": "JhQM6yeuK84BoGVVSxbLL9HjjeiBERnWHEZSIIMqwd0"
     }
   ]
@@ -185,19 +194,20 @@ Below is a non-normative example of a decoded key proof JWT:
 
 ## 6.2 `di_vp` Proof Type
 
-`auxiliary_data` is a property of the Verifiable Presentation. The `@context` MUST
-include a context [JSON-LD] that defines the term as a JSON literal. Canonicalization then keeps
-the value intact.
+`auxiliary_data` is a property of the Verifiable Presentation. Its `@context` MUST hold this
+embedded context [JSON-LD] after `https://www.w3.org/ns/credentials/v2` [VC-DATA-MODEL-2.0]:
 
 ```json
 {
-  "@context": {
-    "auxiliary_data": { "@id": "<term IRI>", "@type": "@json" }
+  "auxiliary_data": {
+    "@id": "https://github.com/sirosfoundation/nym_auth_rulebook/blob/main/openid-4-verifiable-credential-issuance-auxiliary-data.md#auxiliary_data",
+    "@type": "@json"
   }
 }
 ```
 
-> TODO: define the term IRI and the URL where this context is published.
+The context makes the value a JSON literal, which canonicalization keeps intact. Its IRI names the
+term in this specification, and the Verifiable Presentation carries the context itself.
 
 ## 6.3 `attestation` Proof Type
 
@@ -248,9 +258,9 @@ Below is a non-normative example of the payload of an encrypted Credential Respo
   "credential_metadata": {
     "auxiliary_data": [
       {
-        "type": "hash_commitment",
+        "type": "commitment",
         "alg": "sha-256",
-        "path": ["eu.europa.ec.eudi.nym_auth.1", "ssc"],
+        "path": ["org.example.membership.1", "member_commitment"],
         "opening": "So-cHS4_SltsfY6fChssPQ"
       }
     ]
@@ -352,6 +362,8 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
 
 * [JSON-LD] G. Kellogg, M. Sporny, D. Longley, M. Lanthaler, P.-A. Champin, N. Lindström, "JSON-LD
   1.1", W3C Recommendation, 16 July 2020.
+* [VC-DATA-MODEL-2.0] M. Sporny, T. Thibodeau Jr, I. Herman, G. Cohen, M. B. Jones, "Verifiable
+  Credentials Data Model v2.0", W3C Recommendation, 15 May 2025.
 * [IANA.JWT] IANA, "JSON Web Token Claims".
 
 [OpenID4VCI]: https://github.com/openid/OpenID4VCI/blob/main/1.1/openid-4-verifiable-credential-issuance-1_1.md
@@ -360,4 +372,5 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
 [RFC7519]: https://www.rfc-editor.org/rfc/rfc7519
 [RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
 [JSON-LD]: https://www.w3.org/TR/2020/REC-json-ld11-20200716/
+[VC-DATA-MODEL-2.0]: https://www.w3.org/TR/vc-data-model-2.0/
 [IANA.JWT]: https://www.iana.org/assignments/jwt
