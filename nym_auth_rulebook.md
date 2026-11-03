@@ -45,12 +45,11 @@ described in RFC 2119. In tables, REQ is REQUIRED, OPT is OPTIONAL and CON is CO
 | Data Identifier | Attribute Identifier | CBOR / CDDL | Presence | Content |
 | :--- | :--- | :--- | :--- | :--- |
 | **birthdate_and_secret_seed_commitment** | `bsc` | `bstr` (32 bytes) | REQ | `AES-128-Enc(secret_seed, "nym/b" ‖ 0x01 ‖ birth_date) ‖ AES-128-Enc(secret_seed, "nym/b" ‖ 0x02 ‖ 0x00×10)`. `secret_seed`, the issuer-known seed, is 16 random bytes that the issuer samples and shares with the Holder. `birth_date` is the Holder's date of birth, an RFC 3339 `full-date`. |
-| **private_seed_commitment** | `psc` | `bstr` (32 bytes) | REQ | `AES-128-Enc(private_seed, "nym/p" ‖ 0x01 ‖ 0x00×10) ‖ AES-128-Enc(private_seed, "nym/p" ‖ 0x02 ‖ 0x00×10)`, or 32 zero bytes when the Holder provides none. `private_seed` is 16 random bytes that the Holder samples and keeps to itself. |
+| **private_seed_commitment** | `psc` | `bstr` (32 bytes) | REQ | `AES-128-Enc(private_seed, "nym/p" ‖ 0x01 ‖ 0x00×10) ‖ AES-128-Enc(private_seed, "nym/p" ‖ 0x02 ‖ 0x00×10)`, or 32 zero bytes when the Holder provides none. `private_seed` is 16 random bytes that the Holder samples for each Credential Issuer and keeps to itself. |
 
 `AES-128-Enc(k, b)` is the AES-128 block cipher (FIPS 197) on one 16-byte block `b` under the
 16-byte key `k`, without a mode of operation. `"nym/b"` and `"nym/p"` are 5 ASCII bytes.
 `birth_date` is the `full-date` `YYYY-MM-DD` as 10 ASCII bytes, without CBOR tag or length prefix.
-Each block is therefore 16 bytes.
 
 > **NOTE:** The constant second block of each commitment fixes the key: another key that gives the
 > same block takes about 2^128 work to find. With the key fixed, the first block of `bsc` determines
@@ -170,8 +169,7 @@ disclosable: a presentation commits to the attributes it uses and hides the rest
 > `hash_to_scalar(secret_seed, "nym_auth/v1/bbs-seed")` of the BLS12-381-SHA-256 ciphersuite.
 
 > **NOTE:** `bbs_cd` has no validity period, no `psc` and no `bsc` in this version. `private_seed`
-> would need blind issuance. No attribute is disclosable, so the issuer signs `secret_seed` and
-> `birth_date` directly.
+> would need blind issuance.
 
 ---
 
@@ -182,15 +180,14 @@ For the `mso_mdoc` form:
 * The issuer samples `secret_seed` and computes `bsc` from it and `birth_date`. It MUST use the
   `secret_seed` it uses to remap pseudonyms to an identity.
 * All credentials of a batch carry the same `secret_seed`, so they give the same pseudonyms.
-* The Wallet Unit samples `private_seed`, computes `psc` and sends it to the issuer. The issuer
-  writes the `psc` it receives, or 32 zero bytes when it receives none.
+* The Wallet Unit samples a `private_seed` for each Credential Issuer, computes `psc` and sends it
+  to that issuer. The issuer writes the `psc` it receives, or 32 zero bytes when it receives none.
 * The Wallet Unit MUST hold `secret_seed` and `birth_date`, and `private_seed` when `psc` is not 32
   zero bytes, alongside the attestation.
 
-`bsc` and `psc` travel as `commitment` entries of
-[Credential Auxiliary Data](openid-4-verifiable-credential-issuance-auxiliary-data.md): the issuer
-sends the opening of `bsc`, and the Wallet Unit sends `psc`. This document defines their commitment
-functions, the values of `alg`:
+The issuer sends the opening of `bsc`, and the Wallet Unit sends `psc`, as `commitment` entries of
+[Credential Auxiliary Data](openid-4-verifiable-credential-issuance-auxiliary-data.md). This
+document defines their commitment functions, the values of `alg`:
 
 | `alg` | Opening | Commitment |
 | :--- | :--- | :--- |
@@ -221,8 +218,8 @@ The reset rules:
 
 * A reset MUST follow an operator-approved re-identification of the subject, MUST be logged and
   SHOULD be rate-limited.
-* A reset is meant for a Holder who lost `private_seed`. A Wallet Unit that restores `private_seed`
-  from a backup gives the same `psc` and needs no reset.
+* A reset is meant for a Holder who lost its `private_seed` for the issuer. A Wallet Unit that
+  restores that `private_seed` from a backup gives the same `psc` and needs no reset.
 * Deleting a subject's `psc` record (for example on erasure) acts as a reset. The issuer needs a
   policy for it, because a ban recorded against the old pseudonym no longer follows the subject.
 
@@ -247,7 +244,7 @@ A Credential Query for `nym_auth`:
 * has `_req` items from the function catalogue below, and no `_req_sets`;
 * has `require_cryptographic_holder_binding` absent or `true`.
 
-A query that breaks one of these rules is invalid.
+A `zkp_req` query that breaks one of these rules is invalid.
 
 ## Outcomes
 
@@ -257,6 +254,8 @@ These are the outcomes of `zkp_req`, Section 5:
 * A query that the attestation's data cannot satisfy gets `access_denied`, without
   `error_description`. Examples are a failed predicate, an expired attestation, and a `psc` of 32
   zero bytes for `known-offender-matching-psc`.
+* A query for which the Wallet has no usable system and proof backend gets
+  `vp_formats_not_supported`.
 
 ## What every proof establishes
 
@@ -270,14 +269,13 @@ Every `nym_auth` proof, whatever its `_req` items, shows:
 4. **Session:** the proof is bound to the session (Binding).
 5. **Items:** every item of `_req` holds, with the parameters the Verifier sent.
 
-The Verifier learns `results`, `issuer_key_set` and `proof_time`. These MUST stay private:
+The Verifier learns `results`, `issuer_key_set` and `proof_time`. The following MUST stay private:
 `secret_seed`, `private_seed`, `prover_input` where it is not a constant, `birth_date`, the
 issuer-signed data and digests, the issuer signature, the device key and the device signature.
 
 The Verifier's statement MUST contain `verifier_input`, the session binding values of the system,
 every parameter value of `_req` (for `age_check`, the bounds E and C), `proof_time` when it is
-present, H for `prf` `aes-128`, and `issuer_key_set`. A predicate has no output: its parameters are
-in the statement, and the proof shows that it holds.
+present, H for `prf` `aes-128`, and `issuer_key_set`.
 
 ## Prover-supplied values
 
@@ -287,13 +285,17 @@ rulebook names them with their CBOR types, and its proof backend carries them in
 | Name | CBOR type | Presence | Content |
 | :--- | :--- | :--- | :--- |
 | `issuer_key_set` | `[+ bstr]` | REQ | The set of issuer keys among which the proof shows the attestation's issuer to be, without revealing which. |
-| `proof_time` | `tdate` | CON | A UTC time. The proof checks validity at it, and D of `age_check` is its date. Present when the system checks validity or `_req` has an `age_check` item. |
+| `proof_time` | `tdate` | CON | A UTC time in the form below. The proof checks validity at it. D of `age_check` is the date of `proof_time` at the query's `utc_offset` (`zkp_req`, Section 1.4). Present when the system checks validity or `_req` has an `age_check` item. |
 
 * The system rulebook defines the representation of `issuer_key_set` and how many keys it may hold.
   * `mso_mdoc`: each element is a DER-encoded Document Signer certificate.
   * `bbs_cd`: the set holds one BBS issuer public key, 96 bytes in the ETSI encoding. A BBS proof
     verifies under one key, so it reveals the issuer.
 * The Verifier MUST validate every element of `issuer_key_set` against its trust configuration.
+* `proof_time` has the form `YYYY-MM-DDTHH:MM:SSZ`: 20 characters, uppercase `T` and `Z`, a valid
+  calendar date, and the time `HH:MM:SS` with HH 00–23, MM 00–59 and SS 00–59. The Verifier MUST
+  reject a `proof_time` of another form, such as one with the leap second 60 or with lowercase `t`
+  or `z`, which RFC 3339 admits.
 * The Verifier MUST reject a `proof_time` that deviates from its own clock by more than its
   tolerance.
 * The Verifier takes only `issuer_key_set`, `proof_time` and `results` from the presentation into
@@ -352,14 +354,18 @@ Response Mode, or a missing key, makes the request invalid.
 
 ## Systems
 
-A `nym_auth` system has a system rulebook (`zkp_req`, Section 4.3). It proves everything in "What
-every proof establishes", follows Binding, and carries the prover-supplied values.
+Approved systems (circuits and schemes) are maintained in a registry of approved systems. The
+system rulebook of a registry entry specifies it (`zkp_req`, Section 4.3). A `nym_auth` system
+proves everything in "What every proof establishes", follows Binding, and carries the
+prover-supplied values.
 
-* A system for `mso_mdoc` names the versions of this rulebook whose attestations it reads.
-  Attestations of different versions of this rulebook share the `docType`. A Wallet Unit selects a
-  system whose rulebook names the version of its attestation.
-* The registry of approved systems MUST contain at least one approved circuit that supports every
-  function and configuration defined in this document for `mso_mdoc`.
+* The system rulebook of a system for `mso_mdoc` MUST name the versions of this rulebook whose
+  attestations it reads. Attestations of different versions of this rulebook share the `docType`.
+  A Wallet Unit selects a system whose rulebook names the version of its attestation.
+* The registry MUST contain at least one approved circuit that supports every function and
+  configuration defined in this document for `mso_mdoc`.
+
+The table lists the systems that this repository specifies.
 
 | System | Proof backends | Source format |
 | :--- | :--- | :--- |
@@ -382,16 +388,16 @@ For a value function, `return` is REQUIRED. For an assertion function, `return` 
 An item that breaks this rule, or names an unknown `fn_id`, makes the query invalid. `results` holds
 exactly the `return` handles of the value functions' items.
 
-> **NOTE:** An assertion has no output, so a Verifier never observes a negative result. A predicate
-> that returned `true` or `false` would let a Verifier recover `birth_date` bit by bit through
-> repeated queries.
+> **NOTE:** An assertion function has no output, so a Verifier never observes a negative result. A
+> predicate that returned `true` or `false` would let a Verifier recover `birth_date` bit by bit
+> through repeated queries.
 
 ## `pseudonym`
 
 A deterministic pseudonym, computed with the pseudorandom function `prf`.
 
 * `fn_id`: `"pseudonym"`.
-* A value function: `return` is REQUIRED.
+* A value function.
 * Attributes: for `mso_mdoc`, the seed from an opening: `secret_seed` from `bsc` for the `-ssc`
   configurations, and `private_seed` from `psc` for `known-offender-matching-psc`. For `bbs_cd`,
   `secret_seed`.
@@ -486,8 +492,8 @@ For `bbs_cd`, `known-offender-matching-ssc` uses `prf` `hashdh-bls12381g1`, whic
 * It supports known-offender matching, because an issuer accepts one `psc` other than 32 zero bytes
   per subject (One `psc` per subject).
 
-> **NOTE:** A new issuer may accept a new `psc`, which gives a new pseudonym. A new Verifier
-> identity also gives a new pseudonym.
+> **NOTE:** `private_seed` is per Credential Issuer, so a ban stays with one issuer. A new issuer
+> means a new `psc` and a new pseudonym. A new Verifier identity also gives a new pseudonym.
 
 #### `account-recovery-ssc`
 
@@ -552,10 +558,9 @@ under DDH in G1, with $H$ modeled as a random oracle into G1.
 Proves that the Holder's age in whole years lies in a range.
 
 * `fn_id`: `"age_check"`.
-* An assertion function: `return` MUST NOT be present, and `results` has no entry for it. The proof
-  reveals nothing about `birth_date` beyond the predicate.
-* Attributes: for `mso_mdoc`, `birth_date` from the opening of `bsc`, which the proof opens with
-  `secret_seed`. For `bbs_cd`, the `birth_date` attribute.
+* An assertion function. The proof reveals nothing about `birth_date` beyond the predicate.
+* Attributes: for `mso_mdoc`, the `birth_date` committed in `bsc`, which the proof opens with
+  `secret_seed` and `birth_date`. For `bbs_cd`, the `birth_date` attribute.
 * A `_req` holds at most one `age_check` item. More makes the query invalid.
 
 | Parameter | Type | Presence | Content |
@@ -583,7 +588,7 @@ Without `utc_offset`, D is the UTC date of `proof_time`.
 * E is the earliest calendar date after D minus (B + 1) years.
 * `A+` has no E, and `B-` has no C. A system takes its widest value for a missing bound.
 * A system supports a `range` only when E and C lie within the dates its rulebook gives. For
-  another `range`, the system answers `unsupported` for the option (`zkp_req`, Section 1.3).
+  another `range`, it forms no usable pair for the option (`zkp_req`, Section 1.3).
 * For `mso_mdoc`, the comparison runs on the committed `full-date`, whose character order keeps date
   order. For `bbs_cd`, it runs on `date-packed`, which keeps date order.
 
