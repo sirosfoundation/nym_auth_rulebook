@@ -40,7 +40,7 @@ Every `verifier_id` form of nym_auth works.
 An option may leave out `age_check`. The statement then takes the widest bounds (Section 4),
 which every birth date passes.
 
-This system answers `unsupported` for an option ([zkp_req](../zkp_req.md), Section 2.1) when:
+This system forms no usable pair for an option ([zkp_req](../zkp_req.md), Section 1.3) when:
 
 * the option has no `pseudonym` item;
 * `pseudonym.config` is another configuration;
@@ -78,7 +78,7 @@ Hex bytes are in capitals, `'text'` is the ASCII bytes of text, a name is a valu
 bytes, and `;` starts a comment.
 
 * `x5chain` is one DER Document Signer certificate as a `bstr` of 24 to 65,535 bytes, with the
-  shortest head. Its key is a P-256 key.
+  shortest head. Its key is an uncompressed P-256 key (Section 6).
 * `bsc` and `psc` have 32 bytes each (nym_auth, Attributes).
 * `x` is the device key's x-coordinate, 32 bytes big-endian. `sign` is `F5` when y is odd and `F4`
   when y is even. x is the x-coordinate of a P-256 point.
@@ -94,7 +94,7 @@ bytes, and `;` starts a comment.
 | Name in `inputs` | CBOR type | Meaning |
 | :-- | :-- | :-- |
 | `issuer_key_set` | `[ bstr ]`, exactly one element | The DER X.509 Document Signer certificate of the credential's `x5chain` (Section 6). |
-| `proof_time` | `tdate` (`#6.0`), exactly 20 characters `YYYY-MM-DDThh:mm:ssZ` | The time T at which the hash circuit tests validity (Section 6). |
+| `proof_time` | `tdate` (`#6.0`), in the form of `proof_time` (nym_auth, Prover-supplied values) | The time T at which the hash circuit tests validity (Section 6). |
 
 The `longfellow-libzk-v1` parameters of this system are:
 
@@ -130,8 +130,8 @@ The hash circuit has 267 public slots, in slot order:
 | 1 | x^(T + 533,333,333,333,328), T the 14 digits of `proof_time` as the integer YYYYMMDDhhmmss | `inputs.proof_time` |
 | 2–257 | bits of H = SHA-256(`"nym_auth/v1/aes-128/known-offender-matching-ssc"` ‖ 32 zero bytes ‖ `verifier_input`), bit j of byte d at slot 2 + 8d + j | `verifier_input` (nym_auth, PRF `aes-128`) |
 | 258, 259 | pseudonym bytes 0–15 and 16–31, each a GF(2^128) element | `results` |
-| 260 | x^(E + 533,333,328), E the integer YYYYMMDD; 0 without E | `range` at D (nym_auth, `age_check`) |
-| 261 | x^(C + 533,333,328), C the integer YYYYMMDD; 99,999,999 without C | `range` at D (nym_auth, `age_check`) |
+| 260 | x^(E + 533,333,328), E the integer YYYYMMDD, and E = 0 without E | `range` at D (nym_auth, `age_check`) |
+| 261 | x^(C + 533,333,328), C the integer YYYYMMDD, and C = 99,999,999 without C | `range` at D (nym_auth, `age_check`) |
 | 262 | c | the transcript |
 | 263–266 | t_1 … t_4 | `zk_proof` |
 
@@ -212,7 +212,7 @@ It computes E, C, H and e2 as the Verifier does.
 1. The prover tests the credential. A failure gives the error of Section 9. The tests are:
    * the credential has the form of Section 2;
    * the issuer signature verifies under the `x5chain` key;
-   * `secret_seed` and `birth_date` open `bsc`;
+   * `birth_date` has the form `YYYY-MM-DD`, and `secret_seed` and `birth_date` open `bsc`;
    * `validFrom` ≤ `proof_time` ≤ `validUntil`;
    * the birth date lies in [E, C];
    * the device signature verifies under the MSO's device key.
@@ -268,8 +268,11 @@ Inputs and public inputs include the constant 1.
 Known answers in `native/longfellow/nym-auth-zk-v07/tests/`:
 
 * `golden/redirect_13-17.json`, `golden/redirect_16-_zero_psc.json` and
-  `golden/dcapi_no-range_zero_psc.json` are presentations that every verifier must accept with
-  their own request. Their proofs have 272,780, 273,388 and 272,172 bytes.
+  `golden/dcapi_no-range_zero_psc.json` each hold a crate-level `zk_proof` in hex, its pseudonym
+  and the request values: the range, `proof_time` 2026-10-27T12:00:00Z, a TEST Document Signer
+  certificate with its key, `verifier_id` and the session. A file is no `ZkpPresentation`. The
+  `zk_proof` check of Section 4 accepts each `zk_proof` with its file's public values. The proofs
+  have 272,780, 273,388 and 272,172 bytes.
 * `data/v07_test_vectors.json` and `data/v07_test_vectors_zero_psc.json` hold their credentials,
   openings and sessions.
 * `golden.rs` verifies them, and `vectors.rs` proves and verifies on the credentials.
@@ -278,20 +281,25 @@ Known answers in `native/longfellow/nym-auth-zk-v07/tests/`:
 
 | Side | Kind | Code | Condition |
 | :-- | :-- | :-- | :-- |
-| Wallet | refused | `unsupported` | The option lies outside Section 2. |
-| Wallet | `ItemError` (`age_check` index) | `age_out_of_range` | The birth date lies outside [E, C]. |
-| Wallet | `CredentialError` | `seed_mismatch` | `secret_seed` and `birth_date` do not open `bsc`. |
-| Wallet | `CredentialError` | `validity` | `proof_time` lies outside [`validFrom`, `validUntil`]. |
-| Wallet | `CredentialError` | `issuer_signature` | `issuerAuth` fails under the `x5chain` key. |
-| Wallet | `CredentialError` | `issuer_untrusted` | The certificate chains to no authority in the query's `trusted_authorities`. |
-| Wallet | `CredentialError` | `device_binding` | The device signature fails under the MSO's device key. |
-| Wallet | `CredentialError` | `credential_form` | The credential lies outside the form of Section 2. |
+| Wallet | no usable pair ([zkp_req](../zkp_req.md), Section 1.3) | `unsupported` | The option lies outside Section 2. |
+| Wallet | item refusal (`age_check` item) | `age_out_of_range` | The birth date lies outside [E, C]. |
+| Wallet | credential refusal | `seed_mismatch` | `birth_date` is not 10 ASCII bytes `YYYY-MM-DD` with a digit at each Y, M and D, or `secret_seed` and `birth_date` do not open `bsc`. |
+| Wallet | credential refusal | `validity` | `proof_time` lies outside [`validFrom`, `validUntil`]. |
+| Wallet | credential refusal | `issuer_signature` | `issuerAuth` fails under the `x5chain` key. |
+| Wallet | credential refusal | `issuer_untrusted` | The certificate chains to no authority in the query's `trusted_authorities`. |
+| Wallet | credential refusal | `device_binding` | The device signature fails under the MSO's device key. |
+| Wallet | credential refusal | `credential_form` | The credential lies outside the form of Section 2. |
 | Verifier | rejection | `request` | The Verifier's own query lies outside Section 2. |
-| Verifier | rejection | `proof_encoding` | `proof` breaks the format of `longfellow-libzk-v1`, or `inputs` breaks Section 3. |
-| Verifier | rejection | `issuer_key_set` | It holds zero or several certificates, the certificate key is no P-256 key, or validation fails. |
-| Verifier | rejection | `proof_time` | It is malformed, or it lies beyond the tolerance. |
+| Verifier | rejection | `proof_encoding` | `proof` is not the deterministic encoding of its value ([zkp_req](../zkp_req.md), Section 6.1) or breaks the format of `longfellow-libzk-v1`, or `inputs` breaks Section 3. |
+| Verifier | rejection | `issuer_key_set` | It holds several certificates, the certificate key is no uncompressed P-256 key, or validation fails. |
+| Verifier | rejection | `proof_time` | It breaks the form of `proof_time` (nym_auth, Prover-supplied values), or it lies beyond the tolerance. |
 | Verifier | rejection | `results` | The keys of `results` differ from the `return` handles, or the pseudonym value is no 32-byte `bstr`. |
 | Verifier | rejection | `proof_invalid` | A circuit's proof fails. The Verifier MAY name the circuit, `hash` or `signature`. |
+
+Item and credential refusals are those of [zkp_req](../zkp_req.md), Section 4.3. A value of
+`inputs` with its CBOR type of nym_auth, `[+ bstr]` for `issuer_key_set` and `tdate` for
+`proof_time` (nym_auth, Prover-supplied values), gets the code of its row for a fault in a count, a
+form, trust or tolerance. Every other fault of `proof` or `inputs` gets `proof_encoding`.
 
 ## 10. Reference implementation
 
@@ -300,6 +308,26 @@ Known answers in `native/longfellow/nym-auth-zk-v07/tests/`:
 `rulebook-v07`, commit `ee003eebbf9b49e475a697290cbd9798bf250dc7`. It runs on
 `google/longfellow-zk` at `61a8a735964d1b22bccf79bf14ef6767249cdf92`.
 
-* The crate computes D as the UTC date of `proof_time`, which is D at the `utc_offset` `+00:00`.
+It departs from this rulebook in these points. Paths are relative to `native/longfellow/`.
+
 * Its presentations carry `issuer_key_set` and `proof_time` beside `proof`, and `proof` holds
   `zk_proof` alone. Section 3 and `longfellow-libzk-v1` wrap them in `inputs`.
+* Its presentations have no `proof_backend`, and its decoder refuses one as an unknown member
+  (`nym-longfellow/src/presentation.rs`:1-11 and :126). Its requests carry `proof_system_values` in
+  place of `proof_backend_values` (`nym-longfellow/src/request.rs`:69).
+* It writes the presentation's members in the order `system_id`, `proof`, `issuer_key_set`,
+  `proof_time`, `results`, and its decoder accepts any order
+  (`nym-longfellow/src/presentation.rs`:50-61 and :74-128). The deterministic encoding orders them
+  `proof`, `results`, `system_id`, `proof_time`, `issuer_key_set` ([zkp_req](../zkp_req.md),
+  Section 6.1).
+* The adapter builds only `OpenID4VPHandover`, the session of the redirect channel
+  (`nym-longfellow/src/v07.rs`:58-65).
+* It accepts only the `x509_san_dns` form of `verifier_id`
+  (`nym-longfellow/src/request.rs`:277-278), where Section 2 admits every form.
+* It clamps the year of "D minus N years" at 0000 (`nym-auth-zk-v07/src/request.rs`:109). So it
+  proves `13-3000` and `3000+`, which lie outside Section 2, with bounds in year 0000.
+* It computes `b + 1` in u32 (`nym-auth-zk-v07/src/request.rs`:118;
+  `nym-longfellow/src/dates.rs`:200), so the sum wraps for B = 4,294,967,295.
+* It never reads `utc_offset`: it computes D as the UTC date of `proof_time`, and it accepts an
+  invalid `utc_offset`.
+* It never reads `trusted_authorities`, so it never raises `issuer_untrusted`.
