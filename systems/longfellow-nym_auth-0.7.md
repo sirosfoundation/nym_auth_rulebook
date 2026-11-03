@@ -11,9 +11,8 @@ date: "2026-11-03"
 `urn:circuits:sha256:218a72dea317cfcde2e715860e6b3a5dda2c67260f4cf9e8311c62ef900c34bd` is a
 `zkp_req` system ([zkp_req](../zkp_req.md), Section 4.3). It runs on
 [`longfellow-libzk-v1`](../proof_backends/longfellow-libzk-v1.md). It proves functions of the
-nym_auth catalogue ([nym_auth](../nym_auth_rulebook.md)) over attestations of nym_auth versions 0.7
-and 0.8. Source paths name files of `github.com/AltmannPeter/readdit-demo` at the commit of
-Section 10.
+nym_auth catalogue ([nym_auth](../nym_auth_rulebook.md)) over attestations of nym_auth version 0.7.
+Source paths name files of `github.com/AltmannPeter/readdit-demo` at the commit of Section 10.
 
 The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **SHOULD**,
 **SHOULD NOT**, **RECOMMENDED**, **MAY** and **OPTIONAL** are to be interpreted as described in
@@ -25,7 +24,7 @@ RFC 2119.
 | :-- | :-- |
 | Source format | `mso_mdoc` |
 | Type value | `doctype_value` `eu.europa.ec.eudi.nym_auth.1` |
-| Attestations | nym_auth versions 0.7 and 0.8, in the compact profile (nym_auth, Compact profile) |
+| Attestations | nym_auth version 0.7, in the compact profile (nym_auth, Compact profile) |
 | Functions | `pseudonym` `ver` 1, required in every option; `age_check` |
 | Circuits | an LFA2 archive of two LFC2 circuits: `hash` over GF(2^128) and `sig` over the P-256 base field (Section 8) |
 

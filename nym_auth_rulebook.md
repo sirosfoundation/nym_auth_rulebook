@@ -1,7 +1,7 @@
 ---
 title: "Nym-authentication Attestation Specification and Rulebook"
 author: "Peter Altmann & Frédéric Nieto"
-version: "0.8"
+version: "0.7"
 status: "public draft"
 date: "2026-11-03"
 ---
@@ -363,7 +363,7 @@ every proof establishes", follows Binding, and carries the prover-supplied value
 
 | System | Proof backends | Source format |
 | :--- | :--- | :--- |
-| [`urn:circuits:sha256:218a72dea317cfcde2e715860e6b3a5dda2c67260f4cf9e8311c62ef900c34bd`](systems/longfellow-nym_auth-0.7.md) | [`longfellow-libzk-v1`](proof_backends/longfellow-libzk-v1.md) | `mso_mdoc`, attestations of versions 0.7 and 0.8 |
+| [`urn:circuits:sha256:218a72dea317cfcde2e715860e6b3a5dda2c67260f4cf9e8311c62ef900c34bd`](systems/longfellow-nym_auth-0.7.md) | [`longfellow-libzk-v1`](proof_backends/longfellow-libzk-v1.md) | `mso_mdoc`, attestations of version 0.7 |
 | [`urn:mms:bbs-cd:nym_auth:v1`](systems/bbs-cd-nym_auth-v1.md) | [`bbs-cd-plugins-v0.1`](proof_backends/bbs-cd-plugins-v0.1.md) | `bbs_cd` |
 
 ---
