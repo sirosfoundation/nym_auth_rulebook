@@ -212,7 +212,8 @@ It computes E, C, H and e2 as the Verifier does.
 1. The prover tests the credential. A failure gives the error of Section 9. The tests are:
    * the credential has the form of Section 2;
    * the issuer signature verifies under the `x5chain` key;
-   * `birth_date` has the form `YYYY-MM-DD`, and `secret_seed` and `birth_date` open `bsc`;
+   * `birth_date` has the form `YYYY-MM-DD`;
+   * `secret_seed` and `birth_date` open `bsc`;
    * `validFrom` ≤ `proof_time` ≤ `validUntil`;
    * the birth date lies in [E, C];
    * the device signature verifies under the MSO's device key.
@@ -312,14 +313,13 @@ It departs from this rulebook in these points. Paths are relative to `native/lon
 
 * Its presentations carry `issuer_key_set` and `proof_time` beside `proof`, and `proof` holds
   `zk_proof` alone. Section 3 and `longfellow-libzk-v1` wrap them in `inputs`.
-* Its presentations have no `proof_backend`, and its decoder refuses one as an unknown member
+* Its presentations have no `proof_backend`. Its decoder refuses one as an unknown member
   (`nym-longfellow/src/presentation.rs`:1-11 and :126). Its requests carry `proof_system_values` in
   place of `proof_backend_values` (`nym-longfellow/src/request.rs`:69).
 * It writes the presentation's members in the order `system_id`, `proof`, `issuer_key_set`,
-  `proof_time`, `results`, and its decoder accepts any order
-  (`nym-longfellow/src/presentation.rs`:50-61 and :74-128). The deterministic encoding orders them
-  `proof`, `results`, `system_id`, `proof_time`, `issuer_key_set` ([zkp_req](../zkp_req.md),
-  Section 6.1).
+  `proof_time`, `results`. Its decoder accepts any order (`nym-longfellow/src/presentation.rs`:50-61
+  and :74-128). The deterministic encoding orders them `proof`, `results`, `system_id`,
+  `proof_time`, `issuer_key_set` ([zkp_req](../zkp_req.md), Section 6.1).
 * The adapter builds only `OpenID4VPHandover`, the session of the redirect channel
   (`nym-longfellow/src/v07.rs`:58-65).
 * It accepts only the `x509_san_dns` form of `verifier_id`
@@ -327,7 +327,7 @@ It departs from this rulebook in these points. Paths are relative to `native/lon
 * It clamps the year of "D minus N years" at 0000 (`nym-auth-zk-v07/src/request.rs`:109). So it
   proves `13-3000` and `3000+`, which lie outside Section 2, with bounds in year 0000.
 * It computes `b + 1` in u32 (`nym-auth-zk-v07/src/request.rs`:118;
-  `nym-longfellow/src/dates.rs`:200), so the sum wraps for B = 4,294,967,295.
-* It never reads `utc_offset`: it computes D as the UTC date of `proof_time`, and it accepts an
-  invalid `utc_offset`.
-* It never reads `trusted_authorities`, so it never raises `issuer_untrusted`.
+  `nym-longfellow/src/dates.rs`:200). The sum wraps for B = 4,294,967,295.
+* It never reads `utc_offset`. It computes D as the UTC date of `proof_time` and accepts an invalid
+  `utc_offset`.
+* It never reads `trusted_authorities` and never raises `issuer_untrusted`.
