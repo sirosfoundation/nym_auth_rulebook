@@ -231,7 +231,7 @@ A system rulebook defines, for one system identifier:
 * its artifacts, pinned by hash, and how they are distributed;
 * its error codes.
 
-Each Wallet refusal that a system rulebook states is of one of two kinds:
+Each Wallet refusal of a credential that a system rulebook states is of one of two kinds:
 
 * An **item refusal** names the `_req` item that fails, so the credential cannot answer an option
   that holds it (Section 2).
