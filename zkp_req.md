@@ -70,11 +70,13 @@ The `zkp_req` entry of `vp_formats_supported` has:
 * `proof_backend_values`: a non-empty array of proof backend identifiers;
 * `system_id_values`: a non-empty array of system identifiers.
 
-The Verifier MUST send both in `client_metadata` (OpenID4VP 1.0, Section 11.1). It MUST be able to
-verify each listed system on each listed proof backend the system runs on. The Wallet MAY send its
-own lists in `wallet_metadata` (OpenID4VP 1.0, Section 10.1). With `request_uri_method=post`, the
-Verifier SHOULD then narrow its request to them. Over the Digital Credentials API the Wallet sends no
-metadata, so the Verifier SHOULD list everything it accepts.
+The Verifier MUST provide both in its `vp_formats_supported` metadata (OpenID4VP 1.0,
+Section 11.1): in `client_metadata`, or as its Client Identifier Prefix provides Verifier metadata
+(OpenID4VP 1.0, Section 5.9). It MUST be able to verify each listed system on each listed proof
+backend the system runs on. The Wallet MAY send its own lists in `wallet_metadata` (OpenID4VP 1.0,
+Section 10.1). With `request_uri_method=post`, the Verifier SHOULD then narrow its request to them.
+Over the Digital Credentials API the Wallet sends no metadata, so the Verifier SHOULD list
+everything it accepts.
 
 Wallets and Verifiers ignore identifiers they do not know.
 
@@ -90,9 +92,9 @@ A system and a proof backend form a usable pair for an option (Section 2.1) when
 * the system's required functions are all in the option;
 * the system supports the parameter values of the option's items, defaults included.
 
-For each matching credential, the Wallet answers the first option that the credential and a usable
-pair can satisfy (Section 2.1). The pair's system must prove over the credential's type. If no
-credential has such an option and pair, the Credential Query has no match.
+The Wallet answers the first option that a matching credential and a usable pair can satisfy
+(Section 2.1), with a credential that satisfies it. The pair's system must prove over the
+credential's type. If no credential has such an option and pair, the Credential Query has no match.
 
 ## 1.4 The Verifier's UTC offset
 
@@ -113,13 +115,14 @@ never disclosed.
 | :--- | :--- | :--- | :--- |
 | `fn_id` | string | REQUIRED | A function of the catalogue of the credential's type. |
 | `params` | object | OPTIONAL | The function's parameters. Absent: the function's defaults. |
-| `return` | string | CONDITIONAL | The handle for the function's result. |
+| `return` | string | CONDITIONAL | The handle for the function's result. The catalogue gives its presence. |
 
 * An item has only these three members. Its index in `_req` identifies it.
 * A parameter the function does not define makes the query invalid.
 * A value function has a result. An assertion function has none: the proof shows that it holds.
-* With `return`, the result comes back in `results` under that handle. Without `return`, the item is
-  an assertion: the proof shows it holds and the presentation says nothing more about it.
+* With `return`, the result comes back in `results` under that handle. An assertion function gives
+  `true` there (Section 3). Without `return`, the proof shows that the item holds. The presentation
+  says nothing more about it.
 * A `return` value is a non-empty string of ASCII letters, digits, `_` and `-`, unique within the
   query.
 * For each function, the catalogue gives:
@@ -127,7 +130,7 @@ never disclosed.
   * its parameters and defaults;
   * whether `return` is REQUIRED, OPTIONAL or forbidden;
   * the CBOR type of a value function's result.
-* A credential for which an assertion fails cannot answer an option that holds it.
+* A credential for which an item fails cannot answer an option that holds it.
 * Each presentation is a separate proof. Items that must hold for one credential go in one
   Credential Query.
 
@@ -203,6 +206,9 @@ The Verifier:
 8. accepts the issuer only if its trust configuration covers every issuer key or certificate the
    proof was made against.
 
+The Verifier MAY run these steps in any order that their inputs allow. A presentation that fails
+several steps is rejected with any one of its failures.
+
 ## 4.2 Proof backend specifications
 
 A proof backend specification defines, for one proof backend identifier:
@@ -225,6 +231,15 @@ A system rulebook defines, for one system identifier:
 * its artifacts, pinned by hash, and how they are distributed;
 * its error codes.
 
+Each Wallet refusal that a system rulebook states is of one of two kinds:
+
+* An **item refusal** names the `_req` item that fails. The credential cannot satisfy an option that
+  holds the item.
+* A **credential refusal** leaves the credential unable to satisfy any option.
+
+The Wallet then answers the first option that a credential can still satisfy (Section 2.1). If no
+credential can satisfy one, the outcome is `access_denied` (Section 5).
+
 A system identifier is a URI. A circuit's identifier is `urn:circuits:sha256:` followed by the
 lowercase hex SHA-256 of the circuit artifact exactly as distributed.
 
@@ -234,7 +249,7 @@ lowercase hex SHA-256 of the circuit artifact exactly as distributed.
 | :--- | :--- |
 | The Wallet has no usable pair for any option of the query (Section 1.3). | `vp_formats_not_supported` |
 | The query breaks a rule of this document or of the function catalogue. | `invalid_request` |
-| No credential can answer (none matches, an assertion fails, a required check fails), the User declines, or proving fails. | `access_denied`, without `error_description` |
+| No credential can answer (none matches, or item and credential refusals of Section 4.3 rule out every option), the User declines, or proving fails. | `access_denied`, without `error_description` |
 
 DCQL decides whether the Authorization Request can still be answered (OpenID4VP 1.0,
 Section 6.4.2). The Wallet sends an Error Response (OpenID4VP 1.0, Section 8.5) only when it
@@ -242,8 +257,7 @@ cannot.
 
 The Wallet shows failure details to the User and never sends them to the Verifier.
 
-> **NOTE:** `access_denied` is also returned when the User declines, so data-dependent failures are
-> indistinguishable from refusal.
+> **NOTE:** The Verifier cannot tell a data-dependent failure from the User's refusal.
 
 # 6. Response
 
@@ -262,8 +276,10 @@ AuthorizationResponse = {
   "vp_token" : { + QueryId => [+ Presentation] },  ; one entry per answered query
   ? "state"  : tstr
 } / {
-  "error"    : tstr,                               ; OpenID4VP 1.0, Section 8.5
-  ? "state"  : tstr
+  "error"               : tstr,                    ; OpenID4VP 1.0, Section 8.5
+  ? "error_description" : tstr,                    ; RFC 6749, Section 4.1.2.1
+  ? "error_uri"         : tstr,                    ; RFC 6749, Section 4.1.2.1
+  ? "state"             : tstr
 }
 QueryId      = tstr                                ; the Credential Query's id
 Presentation = ZkpPresentation / tstr
@@ -273,6 +289,9 @@ Presentation = ZkpPresentation / tstr
   it would be in JSON. A presentation that is a JSON object becomes the text of that object.
 * In JSON, every presentation is a string. A `ZkpPresentation` is the base64url (without padding) of
   its CBOR encoding.
+* The Wallet MUST encode a `ZkpPresentation`, and the `proof` inside it, in the deterministic
+  encoding of RFC 8949, Section 4.2.1. The Verifier MUST reject a presentation or a `proof` whose
+  bytes are not the deterministic encoding of their value.
 
 ## 6.2 Response Mode `direct_post.cwt`
 
