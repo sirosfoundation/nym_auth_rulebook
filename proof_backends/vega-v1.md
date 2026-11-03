@@ -29,8 +29,9 @@ Proof = {
 ```
 
 * `inputs` holds exactly the values the system rulebook names, with the CBOR types it gives.
-* The Verifier rejects `proof` when a member of `Proof` or `inputs` is missing, repeated, unknown
-  or of the wrong type. It also rejects bytes after the map.
+* `proof` holds the deterministic encoding of `Proof` ([zkp_req](../zkp_req.md), Section 6.1).
+* The Verifier rejects `proof` when it is not that encoding, or when a member of `Proof` or
+  `inputs` is missing, repeated, unknown or of the wrong type. It also rejects bytes after the map.
 
 `zk_proof` is one
 `vega_prover::vega_mc_zkp::VegaMcZkSNARK<vega_prover::provider::T256HyraxEngine>`, encoded with
