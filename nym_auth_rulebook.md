@@ -492,8 +492,8 @@ For `bbs_cd`, `known-offender-matching-ssc` uses `prf` `hashdh-bls12381g1`, whic
 * It supports known-offender matching, because an issuer accepts one `psc` other than 32 zero bytes
   per subject (One `psc` per subject).
 
-> **NOTE:** `private_seed` is per Credential Issuer, so a ban stays with one issuer. A new issuer
-> means a new `psc` and a new pseudonym. A new Verifier identity also gives a new pseudonym.
+> **NOTE:** `private_seed` is per Credential Issuer. A ban therefore stays with one issuer. A new
+> issuer means a new `psc` and a new pseudonym. A new Verifier identity also gives a new pseudonym.
 
 #### `account-recovery-ssc`
 
