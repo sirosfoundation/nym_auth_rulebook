@@ -2,7 +2,7 @@
 title: "Proof backend vega-v1"
 version: "0.1"
 status: "draft"
-date: "2026-10-22"
+date: "2026-11-03"
 ---
 
 # `vega-v1`

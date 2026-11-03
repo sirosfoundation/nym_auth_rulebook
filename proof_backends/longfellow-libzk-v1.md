@@ -2,7 +2,7 @@
 title: "Proof backend longfellow-libzk-v1"
 version: "0.1"
 status: "draft"
-date: "2026-10-22"
+date: "2026-11-03"
 ---
 
 # `longfellow-libzk-v1`
@@ -15,7 +15,7 @@ the Rust runtime of [google/longfellow-zk](https://github.com/google/longfellow-
 The system rulebook of each system on `longfellow-libzk-v1` defines:
 
 * its circuits and their Ligero parameters;
-* the values its circuits link;
+* the values its circuits link, their number T and the equation of their tags;
 * the transcript seed;
 * its statement and its prover-supplied values.
 
@@ -46,16 +46,14 @@ zk_proof = tag_1 ‖ … ‖ tag_T ‖ π_1 ‖ … ‖ π_N
 * A tag is a GF(2^128) element (modulo x^128 + x^7 + x^2 + x + 1) in 16 bytes, little-endian;
   integer bit i is the coefficient of x^i.
 * π_i is the `ZkProof` of C_i, as `ZkProof::write_to_buf` writes it with C_i's geometry.
-* With N = 2 and T = 6 this is the runtime's `MdocProof::write` layout.
 
 All proofs share one Fiat–Shamir transcript, seeded with the system's seed:
 
-1. The prover draws a_p,1 … a_p,T (16 bytes each) from a CSPRNG. They are private inputs of every
-   circuit that reads a linked value.
+1. The prover draws its MAC keys from a CSPRNG.
 2. It commits C_1 … C_N in order.
-3. a_v is the next 16 bytes of the transcript, little-endian.
-4. tag_k = (a_p,k + a_v)·m_k in GF(2^128). a_v and the tags are public inputs of every circuit that
-   reads a linked value. Each circuit that reads m_k checks tag_k.
+3. The challenge c is the next 16 bytes of the transcript, a GF(2^128) element in the encoding above.
+4. It computes the tags as the system rulebook defines. c and the tags are public inputs of every
+   circuit that reads a linked value, and each such circuit checks its tags.
 5. It proves C_1 … C_N in order.
 
 The Verifier:
@@ -63,5 +61,5 @@ The Verifier:
 1. MUST reject a `zk_proof` over 1 MiB (1,048,576 bytes) before reading it;
 2. reads the T tags, then π_1 … π_N with `ZkProof::read` and each circuit's geometry;
 3. rejects leftover bytes;
-4. replays the commitments in order and derives a_v;
+4. replays the commitments in order and derives c;
 5. verifies π_1 … π_N in order on the same transcript, and accepts only if every π_i verifies.
