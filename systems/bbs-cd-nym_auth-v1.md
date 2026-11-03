@@ -207,22 +207,21 @@ form, trust or tolerance. A missing `proof_time` gets `proof_time` when the opti
 ## 10. Reference implementation
 
 `native/bbs/nym-bbs` of `github.com/AltmannPeter/readdit-demo`, branch `rulebook-v07`, commit
-`ee003eebbf9b49e475a697290cbd9798bf250dc7`. It runs this system in its rulebook 0.5 mode: nym-bbs
-reads rulebook versions 0.4 and 0.5 only (`native/bbs/nym-bbs/src/profile.rs`:101-107), and the
-demo's v0.7 profile marks `bbs-cd-plugins-v0.1` pending
-(`profiles/nym-auth-v0.7/profile.json`:245-250).
+`ee003eebbf9b49e475a697290cbd9798bf250dc7`. It runs this system in its rulebook 0.5 mode. `nym-bbs`
+reads rulebook versions 0.4 and 0.5 only (`native/bbs/nym-bbs/src/profile.rs`:101-107). The demo's
+v0.7 profile marks `bbs-cd-plugins-v0.1` pending (`profiles/nym-auth-v0.7/profile.json`:245-250).
 
 It departs from this rulebook in these points. Paths are relative to `native/bbs/`.
 
 * Its presentations carry `issuer_key_set` and `proof_time` beside `proof`, and `proof` holds
   `zk_proof` alone. Section 3 and `bbs-cd-plugins-v0.1` wrap them in `inputs`.
-* Its presentations have no `proof_backend`, and its decoder refuses one as an unknown member
+* Its presentations have no `proof_backend`. Its decoder refuses one as an unknown member
   (`nym-bbs/src/presentation.rs`:1-11 and :126). Its requests carry `proof_system_values` in place
   of `proof_backend_values` (`nym-bbs/src/profile.rs`:136-141).
 * It writes the presentation's members in the order `system_id`, `proof`, `issuer_key_set`,
-  `proof_time`, `results`, and its decoder accepts any order (`nym-bbs/src/presentation.rs`:52-63
-  and :76-128). The deterministic encoding orders them `proof`, `results`, `system_id`,
-  `proof_time`, `issuer_key_set` ([zkp_req](../zkp_req.md), Section 6.1).
+  `proof_time`, `results`. Its decoder accepts any order (`nym-bbs/src/presentation.rs`:52-63 and
+  :76-128). The deterministic encoding orders them `proof`, `results`, `system_id`, `proof_time`,
+  `issuer_key_set` ([zkp_req](../zkp_req.md), Section 6.1).
 * When E falls before 1900, it drops E and proves lo = 0 (`nym-bbs/src/dates.rs`:180-181).
   `13-130` at D = 2026-10-20 gives E = 1895-10-21, which lies outside Section 2.
 * Its date-range prover keeps the holder policy of the cd-date-range plugin and refuses windows of
@@ -236,6 +235,6 @@ It departs from this rulebook in these points. Paths are relative to `native/bbs
   and 176-197).
 * It accepts only the `x509_san_dns` form of `verifier_id` (`nym-bbs/src/profile.rs`:272-278),
   where Section 2 admits every form.
-* It never reads `utc_offset`: it computes D as the UTC date of `proof_time`, and it accepts an
-  invalid `utc_offset`.
-* It never reads `trusted_authorities`, so it never raises `issuer_untrusted`.
+* It never reads `utc_offset`. It computes D as the UTC date of `proof_time` and accepts an invalid
+  `utc_offset`.
+* It never reads `trusted_authorities` and never raises `issuer_untrusted`.
