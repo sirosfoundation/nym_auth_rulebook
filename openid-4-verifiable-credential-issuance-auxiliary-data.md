@@ -70,13 +70,14 @@ An Auxiliary Data Type definition specifies:
 ## 4.1 `commitment`
 
 A commitment to a secret byte string, its opening. The Credential contains the commitment as a
-claim or as an mdoc value digest. The Credential Configuration defines how long the opening is and
-how it is generated. The opening MUST have at least 128 bits of entropy.
+claim or as an mdoc value digest. `alg` defines the form of the opening, and the specification of
+the Credential's type defines how it is generated. The opening MUST have at least 128 bits of
+entropy.
 
 Parameters:
 
-* `alg`: REQUIRED. The commitment function. It defines the opening and computes the commitment from
-  it. This specification defines `sha-256`: the commitment is the SHA-256 hash of the opening. The
+* `alg`: REQUIRED. The commitment function, which computes the commitment from the opening. This
+  specification defines `sha-256`: the commitment is the SHA-256 hash of the opening. The
   specification of a Credential's type MAY define further values.
 * `path`: CONDITIONAL. Claims path pointer (Appendix C of [OpenID4VCI]) that selects exactly one
   claim: the claim that holds the commitment.
@@ -194,20 +195,24 @@ Below is a non-normative example of a decoded key proof JWT:
 
 ## 6.2 `di_vp` Proof Type
 
-`auxiliary_data` is a property of the Verifiable Presentation. Its `@context` MUST hold this
-embedded context [JSON-LD] after `https://www.w3.org/ns/credentials/v2` [VC-DATA-MODEL-2.0]:
+`auxiliary_data` is a property of the Verifiable Presentation. Its `@context` MUST hold an
+embedded context [JSON-LD] after `https://www.w3.org/ns/credentials/v2` [VC-DATA-MODEL-2.0]. That
+context MUST define the term `auxiliary_data` with its term IRI and `"@type": "@json"`. The context
+makes the value a JSON literal, which canonicalization keeps intact. The term IRI names the term in
+this specification. The change controller of Section 10, the OpenID Foundation Digital Credentials
+Protocols Working Group, assigns it.
+
+Below is a non-normative example of the embedded context. Its term IRI,
+`https://example.org/auxiliary_data`, is an example:
 
 ```json
 {
   "auxiliary_data": {
-    "@id": "https://github.com/sirosfoundation/nym_auth_rulebook/blob/main/openid-4-verifiable-credential-issuance-auxiliary-data.md#auxiliary_data",
+    "@id": "https://example.org/auxiliary_data",
     "@type": "@json"
   }
 }
 ```
-
-The context makes the value a JSON literal, which canonicalization keeps intact. Its IRI names the
-term in this specification, and the Verifiable Presentation carries the context itself.
 
 ## 6.3 `attestation` Proof Type
 
@@ -348,6 +353,8 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
 
 ## 11.1 Normative References
 
+* [JSON-LD] G. Kellogg, M. Sporny, D. Longley, M. Lanthaler, P.-A. Champin, N. Lindström, "JSON-LD
+  1.1", W3C Recommendation, 16 July 2020.
 * [OpenID4VCI] T. Lodderstedt, K. Yasuda, T. Looker, P. Bastian, "OpenID for Verifiable Credential
   Issuance 1.1", Editor's draft openid-4-verifiable-credential-issuance-1_1-01.
 * [RFC2119] S. Bradner, "Key words for use in RFCs to Indicate Requirement Levels", BCP 14,
@@ -357,13 +364,11 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
 * [RFC7519] M. Jones, J. Bradley, N. Sakimura, "JSON Web Token (JWT)", RFC 7519.
 * [RFC8174] B. Leiba, "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words", BCP 14,
   RFC 8174.
+* [VC-DATA-MODEL-2.0] M. Sporny, T. Thibodeau Jr, I. Herman, G. Cohen, M. B. Jones, "Verifiable
+  Credentials Data Model v2.0", W3C Recommendation, 15 May 2025.
 
 ## 11.2 Informative References
 
-* [JSON-LD] G. Kellogg, M. Sporny, D. Longley, M. Lanthaler, P.-A. Champin, N. Lindström, "JSON-LD
-  1.1", W3C Recommendation, 16 July 2020.
-* [VC-DATA-MODEL-2.0] M. Sporny, T. Thibodeau Jr, I. Herman, G. Cohen, M. B. Jones, "Verifiable
-  Credentials Data Model v2.0", W3C Recommendation, 15 May 2025.
 * [IANA.JWT] IANA, "JSON Web Token Claims".
 
 [OpenID4VCI]: https://github.com/openid/OpenID4VCI/blob/main/1.1/openid-4-verifiable-credential-issuance-1_1.md
