@@ -233,8 +233,8 @@ A system rulebook defines, for one system identifier:
 
 Each Wallet refusal of a credential that a system rulebook states is of one of two kinds:
 
-* An **item refusal** names the `_req` item that fails, so the credential cannot answer an option
-  that holds it (Section 2).
+* An **item refusal** names the `_req` item that fails. The credential then cannot answer an option
+  that holds the item (Section 2).
 * A **credential refusal** leaves the credential unable to answer any option.
 
 The Wallet then answers the first option that a credential can still satisfy (Section 2.1). If no
