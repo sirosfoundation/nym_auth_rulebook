@@ -184,7 +184,7 @@ ZkpPresentation = {
 
 ```cbor-diag
 { "system_id": "urn:example:system:v1", "proof_backend": "example-backend-v1",
-  "proof": h'9f3a…', "results": { "tag": h'5f2a…' } }
+  "proof": << { "inputs": {}, "zk_proof": h'9f3a…' } >>, "results": { "tag": h'5f2a…' } }
 ```
 
 ## 4.1 Verification
@@ -315,7 +315,8 @@ Decrypted, the ciphertext is layer 2:
 ```cbor-diag
 { "vp_token": { "q1": [ { "system_id": "urn:example:system:v1",
                           "proof_backend": "example-backend-v1",
-                          "proof": h'9f3a…', "results": { "tag": h'5f2a…' } } ] },
+                          "proof": << { "inputs": {}, "zk_proof": h'9f3a…' } >>,
+                          "results": { "tag": h'5f2a…' } } ] },
   "state": "…" }
 ```
 
