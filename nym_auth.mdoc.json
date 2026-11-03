@@ -11,7 +11,7 @@
     }
   ],
   "claims": {
-    "eu.europa.ec.eudi.nym_auth.1": {
+    "eu.nym_auth.v1": {
       "bsc": {
         "mandatory": true,
         "value_type": "bstr"
