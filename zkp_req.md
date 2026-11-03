@@ -3,7 +3,7 @@ title: "zkp_req: Zero-Knowledge Requests in DCQL"
 author: "Peter Altmann & Frédéric Nieto"
 version: "0.1"
 status: "draft"
-date: "2026-10-22"
+date: "2026-11-03"
 ---
 
 # Introduction
@@ -72,9 +72,9 @@ The `zkp_req` entry of `vp_formats_supported` has:
 
 The Verifier MUST send both in `client_metadata` (OpenID4VP 1.0, Section 11.1). It MUST be able to
 verify each listed system on each listed proof backend the system runs on. The Wallet MAY send its
-own lists in `wallet_metadata` (Section 10.1). With `request_uri_method=post`, the Verifier SHOULD
-then narrow its request to them. Over the Digital Credentials API the Wallet sends no metadata, so
-the Verifier SHOULD list everything it accepts.
+own lists in `wallet_metadata` (OpenID4VP 1.0, Section 10.1). With `request_uri_method=post`, the
+Verifier SHOULD then narrow its request to them. Over the Digital Credentials API the Wallet sends no
+metadata, so the Verifier SHOULD list everything it accepts.
 
 Wallets and Verifiers ignore identifiers they do not know.
 
@@ -87,11 +87,12 @@ A system and a proof backend form a usable pair for an option (Section 2.1) when
 * the system runs on the proof backend;
 * the system proves over the query's source format and a type its `meta` allows;
 * the system supports the option's combination of functions;
+* the system's required functions are all in the option;
 * the system supports the parameter values of the option's items, defaults included.
 
-For each matching credential, the Wallet picks an option and a usable pair for it. The pair's system
-must prove over the credential's type. If no credential has such an option and pair, the Credential
-Query has no match.
+For each matching credential, the Wallet answers the first option that the credential and a usable
+pair can satisfy (Section 2.1). The pair's system must prove over the credential's type. If no
+credential has such an option and pair, the Credential Query has no match.
 
 ## 1.4 The Verifier's UTC offset
 
@@ -112,18 +113,20 @@ never disclosed.
 | :--- | :--- | :--- | :--- |
 | `fn_id` | string | REQUIRED | A function of the catalogue of the credential's type. |
 | `params` | object | OPTIONAL | The function's parameters. Absent: the function's defaults. |
-| `return` | string | OPTIONAL | The handle for the function's result. |
+| `return` | string | CONDITIONAL | The handle for the function's result. |
 
 * An item has only these three members. Its index in `_req` identifies it.
 * A parameter the function does not define makes the query invalid.
+* A value function has a result. An assertion function has none: the proof shows that it holds.
 * With `return`, the result comes back in `results` under that handle. Without `return`, the item is
   an assertion: the proof shows it holds and the presentation says nothing more about it.
 * A `return` value is a non-empty string of ASCII letters, digits, `_` and `-`, unique within the
   query.
 * For each function, the catalogue gives:
+  * whether it is a value function or an assertion function;
   * its parameters and defaults;
   * whether `return` is REQUIRED, OPTIONAL or forbidden;
-  * the CBOR type of its result, if it has one.
+  * the CBOR type of a value function's result.
 * A credential for which an assertion fails cannot answer an option that holds it.
 * Each presentation is a separate proof. Items that must hold for one credential go in one
   Credential Query.
@@ -140,11 +143,10 @@ The functions in this document's examples are illustrative.
 ## 2.1 Options: `_req_sets`
 
 `_req_sets` lists the combinations of `_req` items the Verifier accepts. It is a non-empty array of
-options in the Verifier's order of preference. An option is a non-empty array of `_req` indexes,
-each at most once. Without `_req_sets`, the one option is all of `_req`.
+options. An option is a non-empty array of `_req` indexes, each at most once. Without `_req_sets`,
+the one option is all of `_req`.
 
-* The Wallet answers the first option it can. It MAY let the User choose another option it can
-  answer.
+* The Verifier requests one option of `_req_sets`. The order of the options conveyed in the `_req_sets` array expresses the Verifier's preference for what is returned; the Wallet MUST return the first option that it can satisfy. If the Wallet cannot satisfy any of the options, it MUST NOT return a presentation for the Credential Query.
 * With `_req_sets`, the presentation carries `req_set`: the index of the answered option. Without
   `_req_sets`, it has none.
 * The function catalogue and the system rulebook see every option. They MAY warn the User about a
@@ -216,11 +218,15 @@ A system rulebook defines, for one system identifier:
 * the proof backends it runs on;
 * the source format and type values it proves over;
 * the combinations of functions and the parameter values it supports;
+* any function the system requires in every option;
 * the statement, and where each value comes from;
 * the prover-supplied values: names, CBOR types, meaning;
 * what the function catalogue requires of every system, e.g. session binding;
 * its artifacts, pinned by hash, and how they are distributed;
 * its error codes.
+
+A system identifier is a URI. A circuit's identifier is `urn:circuits:sha256:` followed by the
+lowercase hex SHA-256 of the circuit artifact exactly as distributed.
 
 # 5. Outcomes and errors
 
@@ -231,10 +237,13 @@ A system rulebook defines, for one system identifier:
 | No credential can answer (none matches, an assertion fails, a required check fails), the User declines, or proving fails. | `access_denied`, without `error_description` |
 
 DCQL decides whether the Authorization Request can still be answered (OpenID4VP 1.0,
-Section 6.4.2). The Wallet sends an Error Response (Section 8.5) only when it cannot.
+Section 6.4.2). The Wallet sends an Error Response (OpenID4VP 1.0, Section 8.5) only when it
+cannot.
 
-`access_denied` covers failures and declines alike, so the Verifier cannot tell them apart. The
-Wallet shows failure details to the User and never sends them to the Verifier.
+The Wallet shows failure details to the User and never sends them to the Verifier.
+
+> **NOTE:** `access_denied` is also returned when the User declines, so data-dependent failures are
+> indistinguishable from refusal.
 
 # 6. Response
 
