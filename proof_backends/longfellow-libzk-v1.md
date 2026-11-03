@@ -58,13 +58,13 @@ and its Ligero parameters, the context fixes the proof geometry, the commitment 
 π_i. A reader establishes it afresh at each proof boundary (Section 7.5 of [LIBZK]).
 
 For both fields, the evaluation points fix the codeword. A row of n values holds the evaluations of
-the polynomial of degree below n at the first n points, and its codeword holds that polynomial at
-all `block_enc` points. Any exact interpolation method gives the same bytes.
+the polynomial of degree below n at the first n points. Its codeword holds that polynomial at all
+`block_enc` points. Any exact interpolation method gives the same bytes.
 
 ### GF(2^128)
 
-* The field is GF(2)[x]/(x^128 + x^7 + x^2 + x + 1). An element is 16 bytes, little-endian, and
-  integer bit i is the coefficient of x^i (Section 7.2.1 of [LIBZK]).
+* The field is GF(2)[x]/(x^128 + x^7 + x^2 + x + 1). An element is 16 bytes, little-endian.
+  Integer bit i is the coefficient of x^i (Section 7.2.1 of [LIBZK]).
 * The subfield is GF(2^16) with the basis β_k = g^k, 0 ≤ k < 16, where
   g = x^((2^128 − 1)/(2^16 − 1)) = `0x5c5971877501d4b8f1871e01b64fda4c` (Section 2.2.2 of
   [LIBZK]). These 16 values are the constant `GF2_16_BASIS_V1` of `core/algebra/src/proto.rs`,
@@ -77,10 +77,10 @@ all `block_enc` points. Any exact interpolation method gives the same bytes.
   [LIBZK]).
 * The interpolator is `Lch14InterpolatorFactory` (`runtime/algebra/src/lch14_reed_solomon.rs`) over
   this subfield. Its evaluation points are inj(0), …, inj(`block_enc` − 1) (Section 2.2.2 of
-  [LIBZK]), so `block_enc` is at most 2^16.
+  [LIBZK]). Hence `block_enc` is at most 2^16.
 
 > **NOTE:** The first 16 values of `CANTOR_BASIS` in the same file span the same subfield in other
-> coordinates, and a system's witness packing may use them. A proof made with them has other bytes.
+> coordinates. A system's witness packing may use them. A proof made with them has other bytes.
 
 ### P-256 base field
 
@@ -102,7 +102,7 @@ all `block_enc` points. Any exact interpolation method gives the same bytes.
 ## Transcript
 
 All proofs share one Fiat–Shamir transcript (Section 3 of [LIBZK]). `Transcript::new(seed)`
-(`runtime/random/src/transcript.rs`) absorbs the system's seed as a byte string: the transcript's
+(`runtime/random/src/transcript.rs`) absorbs the system's seed as a byte string. The transcript's
 SHA-256 absorbs 0x00 ‖ u64le(len(seed)) ‖ seed, with u64le(n) the 8 bytes of n, little-endian
 (Section 3.2 of [LIBZK]).
 
