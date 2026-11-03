@@ -23,12 +23,15 @@ values, binding, witness.
 | [longfellow-nym_auth-0.7.md](systems/longfellow-nym_auth-0.7.md) | `urn:circuits:sha256:218a72dea317cfcde2e715860e6b3a5dda2c67260f4cf9e8311c62ef900c34bd` | 0.1 |
 | [bbs-cd-nym_auth-v1.md](systems/bbs-cd-nym_auth-v1.md) | `urn:mms:bbs-cd:nym_auth:v1` | 0.1 |
 
-`nym_auth.mdoc.json` and `nym_auth.schema-meta.yaml` (version 0.7.0) are the registry metadata of
-the `mso_mdoc` encoding.
+`nym_auth.mdoc.json` and `nym_auth.schema-meta.yaml` are the registry metadata of the `mso_mdoc`
+encoding. The schema metadata has version 0.7.0.
 
 `test-vectors/nym_auth_v0.7/` holds `mso_mdoc` attestations of this rulebook, with their openings,
-sessions and device responses. `test-vectors/nym_auth_mdoc/` holds attestations in the item layout of
-rulebook 0.5. Each directory has a verifier that recomputes every value from its files:
+sessions and device responses. `test-vectors/nym_auth_mdoc/` holds attestations of rulebook 0.5 at
+`82d503c`: `bsc` and `psc` as `IssuerSignedItem`s, with a SHA-256 `bsc`. The sessions of both
+directories use the nonce `n-0S6_WzA2Mj` of rulebook 0.7's example. The example in
+`nym_auth_rulebook.md` uses a 22-byte nonce, which `bbs_cd` needs. Each directory has a verifier
+that recomputes every value from its files:
 
 ```sh
 pip install -r test-vectors/nym_auth_v0.7/requirements.txt
