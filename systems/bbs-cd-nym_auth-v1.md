@@ -41,7 +41,7 @@ RFC 2119.
 
 Every `verifier_id` form of nym_auth works.
 
-This system answers `unsupported` for an option ([zkp_req](../zkp_req.md), Section 2.1) when:
+This system forms no usable pair for an option ([zkp_req](../zkp_req.md), Section 1.3) when:
 
 * the option has no `pseudonym` item;
 * the Request Object's `nonce` is outside 16 to 64 bytes (ENVELOPE §4);
@@ -55,7 +55,7 @@ packed slots. An example is `18-18` at D = 2026-02-28: E = 2007-03-01 and C = 20
 | Name in `inputs` | CBOR type | Meaning |
 | :-- | :-- | :-- |
 | `issuer_key_set` | `[ bstr .size 96 ]`, exactly one element | The issuer's BBS public key, ETSI encoding (Section 6). |
-| `proof_time` | `tdate` (`#6.0`), exactly 20 characters `YYYY-MM-DDThh:mm:ssZ` | The time at which the Wallet makes the proof (Section 6). Present exactly when the option has an `age_check`. |
+| `proof_time` | `tdate` (`#6.0`), in the form of `proof_time` (nym_auth, Prover-supplied values) | The time at which the Wallet makes the proof (Section 6). Present exactly when the option has an `age_check`. |
 
 `zk_proof` is the envelope of `bbs-cd-plugins-v0.1`. It has one credential and no disclosed value.
 Its plugins follow the order of Section 4:
@@ -185,25 +185,57 @@ These files are in `native/bbs/vendor/bbs-cd-plugins/docs/` of
 
 | Side | Kind | Code | Condition |
 | :-- | :-- | :-- | :-- |
-| Wallet | refused | `unsupported` | The option lies outside Section 2. |
-| Wallet | `ItemError` (`age_check` index) | `age_out_of_range` | The packed birth date lies outside [lo, hi]. |
-| Wallet | `CredentialError` | `issuer_signature` | The holder check of ENVELOPE §3 fails. |
-| Wallet | `CredentialError` | `issuer_untrusted` | The issuer key matches no authority in the query's `trusted_authorities`. |
-| Wallet | `CredentialError` | `device_binding` | The device key differs from the committed `device_key`, or it refuses ECDSA-P256-SHA256. |
-| Wallet | `CredentialError` | `credential_form` | The schema digest differs from Section 1. |
+| Wallet | no usable pair ([zkp_req](../zkp_req.md), Section 1.3) | `unsupported` | The option lies outside Section 2. |
+| Wallet | item refusal (`age_check` item) | `age_out_of_range` | The packed birth date lies outside [lo, hi]. |
+| Wallet | credential refusal | `issuer_signature` | The holder check of ENVELOPE §3 fails. |
+| Wallet | credential refusal | `issuer_untrusted` | The issuer key matches no authority in the query's `trusted_authorities`. |
+| Wallet | credential refusal | `device_binding` | The device key differs from the committed `device_key`, or it refuses ECDSA-P256-SHA256. |
+| Wallet | credential refusal | `credential_form` | The schema digest differs from Section 1. |
 | Verifier | rejection | `request` | The Verifier's own query lies outside Section 2. |
-| Verifier | rejection | `proof_encoding` | `proof` breaks the format of `bbs-cd-plugins-v0.1`, `inputs` breaks Section 3, or the envelope's credential, disclosure or plugin counts differ from Section 3. |
-| Verifier | rejection | `issuer_key_set` | It holds zero or several keys, or the key is untrusted. |
-| Verifier | rejection | `proof_time` | It is malformed, or it lies beyond the tolerance. |
+| Verifier | rejection | `proof_encoding` | `proof` is not the deterministic encoding of its value ([zkp_req](../zkp_req.md), Section 6.1) or breaks the format of `bbs-cd-plugins-v0.1`, `inputs` breaks Section 3, or the envelope's credential, disclosure or plugin counts differ from Section 3. |
+| Verifier | rejection | `issuer_key_set` | It holds several keys, or its key is untrusted. |
+| Verifier | rejection | `proof_time` | It is missing although the option has an `age_check`, it breaks the form of `proof_time` (nym_auth, Prover-supplied values), or it lies beyond the tolerance. |
 | Verifier | rejection | `results` | The keys of `results` differ from the `return` handles, or the pseudonym value is no 48-byte `bstr` or differs from the plugin's output. |
 | Verifier | rejection | `proof_invalid` | The BBS proof or a plugin proof fails. |
+
+Item and credential refusals are those of [zkp_req](../zkp_req.md), Section 4.3. A value of
+`inputs` with its CBOR type of nym_auth, `[+ bstr]` for `issuer_key_set` and `tdate` for
+`proof_time` (nym_auth, Prover-supplied values), gets the code of its row for a fault in a count, a
+form, trust or tolerance. A missing `proof_time` gets `proof_time` when the option has an
+`age_check`. Every other fault of `proof` or `inputs` gets `proof_encoding`.
 
 ## 10. Reference implementation
 
 `native/bbs/nym-bbs` of `github.com/AltmannPeter/readdit-demo`, branch `rulebook-v07`, commit
-`ee003eebbf9b49e475a697290cbd9798bf250dc7`. It deviates from this rulebook in three points:
+`ee003eebbf9b49e475a697290cbd9798bf250dc7`. It runs this system in its rulebook 0.5 mode: nym-bbs
+reads rulebook versions 0.4 and 0.5 only (`native/bbs/nym-bbs/src/profile.rs`:101-107), and the
+demo's v0.7 profile marks `bbs-cd-plugins-v0.1` pending
+(`profiles/nym-auth-v0.7/profile.json`:245-250).
 
-* its presentations carry `issuer_key_set` and `proof_time` beside `proof`, and `proof` holds
-  `zk_proof` alone; Section 3 and `bbs-cd-plugins-v0.1` wrap them in `inputs`;
-* it computes D as the UTC date of `proof_time`, which is D at the `utc_offset` `+00:00`;
-* it accepts `return` on an `age_check` item and then puts `true` in `results`.
+It departs from this rulebook in these points. Paths are relative to `native/bbs/`.
+
+* Its presentations carry `issuer_key_set` and `proof_time` beside `proof`, and `proof` holds
+  `zk_proof` alone. Section 3 and `bbs-cd-plugins-v0.1` wrap them in `inputs`.
+* Its presentations have no `proof_backend`, and its decoder refuses one as an unknown member
+  (`nym-bbs/src/presentation.rs`:1-11 and :126). Its requests carry `proof_system_values` in place
+  of `proof_backend_values` (`nym-bbs/src/profile.rs`:136-141).
+* It writes the presentation's members in the order `system_id`, `proof`, `issuer_key_set`,
+  `proof_time`, `results`, and its decoder accepts any order (`nym-bbs/src/presentation.rs`:52-63
+  and :76-128). The deterministic encoding orders them `proof`, `results`, `system_id`,
+  `proof_time`, `issuer_key_set` ([zkp_req](../zkp_req.md), Section 6.1).
+* When E falls before 1900, it drops E and proves lo = 0 (`nym-bbs/src/dates.rs`:180-181).
+  `13-130` at D = 2026-10-20 gives E = 1895-10-21, which lies outside Section 2.
+* Its date-range prover keeps the holder policy of the cd-date-range plugin and refuses windows of
+  fewer than 372 slots (`nym-bbs/src/prover.rs`:178;
+  `vendor/bbs-cd-plugins/crates/cd-date-range/src/lib.rs`:41, 171-175 and 209-211). So it refuses
+  `18-18` at D = 2026-02-28 (369 slots) and at D = 2026-11-30 (371 slots), which Section 2 requires
+  it to accept.
+* Its verifier accepts a `proof_time` when the query has no `age_check`
+  (`nym-bbs/src/verifier.rs`:188-203).
+* It supports only the redirect handover, `OpenID4VPHandover` (`nym-bbs/src/profile.rs`:145-150
+  and 176-197).
+* It accepts only the `x509_san_dns` form of `verifier_id` (`nym-bbs/src/profile.rs`:272-278),
+  where Section 2 admits every form.
+* It never reads `utc_offset`: it computes D as the UTC date of `proof_time`, and it accepts an
+  invalid `utc_offset`.
+* It never reads `trusted_authorities`, so it never raises `issuer_untrusted`.
