@@ -3,14 +3,14 @@ title: "System rulebook: BBS committed-disclosure nym_auth v1"
 author: "Peter Altmann & Frédéric Nieto"
 version: "0.1"
 status: "draft"
-date: "2026-10-22"
+date: "2026-11-03"
 ---
 
 # System rulebook: `urn:mms:bbs-cd:nym_auth:v1`
 
 `urn:mms:bbs-cd:nym_auth:v1` is a `zkp_req` system ([zkp_req](../zkp_req.md), Section 4.3). It
 runs on [`bbs-cd-plugins-v0.1`](../proof_backends/bbs-cd-plugins-v0.1.md). It proves functions of
-the nym_auth 0.5 catalogue ([nym_auth](../nym_auth_rulebook.md)).
+the nym_auth catalogue ([nym_auth](../nym_auth_rulebook.md)).
 
 "ENVELOPE", "ECDSA-POP", "PSEUDONYM" and "DATE-RANGE" name bbs-cd-plugins 0.1 documents
 (Section 8):
@@ -29,14 +29,14 @@ RFC 2119.
 | Source format | `bbs_cd` |
 | Type value | `schema_id_value` `eu.europa.ec.eudi.nym_auth.bbs.1` |
 | Schema digest | `ab4183a9ed0b57d6bfb8994c92b432bb9731a3e2fd974ac2f67422e2f7dfb7e1` |
-| Functions | `pseudonym` `ver` 1; `age_check` |
+| Functions | `pseudonym` `ver` 1, required in every option; `age_check` |
 | Plugins | `ecdsa-pop/0.1`, `pseudonym/0.1`, `date-range/0.1` |
 
 ## 2. Supported requests
 
 | `_req` item | Supported parameters |
 | :-- | :-- |
-| `pseudonym` | `config` `known-offender-matching-ssc`, `prf` `hashdh-bls12381g1`, `ver` 1. |
+| `pseudonym` | `config` `known-offender-matching-ssc`, `prf` `hashdh-bls12381g1` (required), `ver` 1. |
 | `age_check` | `range`, with E and C from 1900-01-01 to 9999-12-31. |
 
 Every `verifier_id` form of nym_auth works.
@@ -55,7 +55,7 @@ packed slots. An example is `18-18` at D = 2026-02-28: E = 2007-03-01 and C = 20
 | Name in `inputs` | CBOR type | Meaning |
 | :-- | :-- | :-- |
 | `issuer_key_set` | `[ bstr .size 96 ]`, exactly one element | The issuer's BBS public key, ETSI encoding (Section 6). |
-| `proof_date` | `full-date` (`#6.1004`), exactly 10 characters `YYYY-MM-DD` | D (Section 6). Present exactly when the option has an `age_check`. |
+| `proof_time` | `tdate` (`#6.0`), exactly 20 characters `YYYY-MM-DDThh:mm:ssZ` | The time at which the Wallet makes the proof (Section 6). Present exactly when the option has an `age_check`. |
 
 `zk_proof` is the envelope of `bbs-cd-plugins-v0.1`. It has one credential and no disclosed value.
 Its plugins follow the order of Section 4:
@@ -79,7 +79,7 @@ The statement is the request of ENVELOPE §4. Wallet and Verifier each derive it
 | `credentials[0].disclose` | empty | system |
 | `plugins[0]` | `ecdsa-pop/0.1`, credential 0, attribute `device_key`, params `01 12 'draft00-shared-bit' 01 0080 0010` | system |
 | `plugins[1]` | `pseudonym/0.1`, credential 0, attribute `secret_seed`, params `var8('known-offender-matching-ssc') ‖ var8(verifier_input)` | `verifier_input` (nym_auth, PRF `hashdh-bls12381g1`) |
-| `plugins[2]` | `date-range/0.1`, credential 0, attribute `birth_date`, params `u8 flags ‖ [u32 E] ‖ [u32 C]`; present exactly when the option has an `age_check` | `range` at `inputs.proof_date` (nym_auth, `age_check`) |
+| `plugins[2]` | `date-range/0.1`, credential 0, attribute `birth_date`, params `u8 flags ‖ [u32 E] ‖ [u32 C]`; present exactly when the option has an `age_check` | `range` at D, the date of `inputs.proof_time` at `utc_offset` (nym_auth, `age_check`) |
 
 The `ecdsa-pop` params select (ECDSA-POP §2):
 
@@ -135,8 +135,8 @@ m = Tr("ECDSA-POP/0.1/device-message"; "statement" = pstmt, "nv" = nonce, "nh" =
 ## 6. Validity and issuer trust
 
 * The proof establishes no validity, since `bbs_cd` has no validity period.
-* The proof time is the time at which the Wallet makes the proof. `inputs.proof_date` is its
-  date at the query's `utc_offset`, D (nym_auth, `age_check`).
+* `inputs.proof_time` is the time at which the Wallet makes the proof, from its UTC clock to the
+  second. D is its date at the query's `utc_offset` (nym_auth, `age_check`).
 * `inputs.issuer_key_set` holds one 96-byte ETSI BBS issuer public key.
 * The BBS proof verifies under this key, so the Verifier sees the issuer.
 * The Verifier MUST accept only a key that its trust configuration lists with the schema of
@@ -194,11 +194,16 @@ These files are in `native/bbs/vendor/bbs-cd-plugins/docs/` of
 | Verifier | rejection | `request` | The Verifier's own query lies outside Section 2. |
 | Verifier | rejection | `proof_encoding` | `proof` breaks the format of `bbs-cd-plugins-v0.1`, `inputs` breaks Section 3, or the envelope's credential, disclosure or plugin counts differ from Section 3. |
 | Verifier | rejection | `issuer_key_set` | It holds zero or several keys, or the key is untrusted. |
-| Verifier | rejection | `proof_date` | It is malformed, or no instant of that day at `utc_offset` lies within the tolerance. |
-| Verifier | rejection | `results` | The pseudonym value is no 48-byte `bstr` or differs from the plugin's output, or an `age_check` value is not `true`. |
+| Verifier | rejection | `proof_time` | It is malformed, or it lies beyond the tolerance. |
+| Verifier | rejection | `results` | The keys of `results` differ from the `return` handles, or the pseudonym value is no 48-byte `bstr` or differs from the plugin's output. |
 | Verifier | rejection | `proof_invalid` | The BBS proof or a plugin proof fails. |
 
 ## 10. Reference implementation
 
-`native/bbs/nym-bbs` of `github.com/AltmannPeter/readdit-demo`, branch `bbs-longfellow`, commit
-`1cf3f2610318e896b0a1cde4b30d6b15d94ccfd0`.
+`native/bbs/nym-bbs` of `github.com/AltmannPeter/readdit-demo`, branch `rulebook-v07`, commit
+`ee003eebbf9b49e475a697290cbd9798bf250dc7`. It deviates from this rulebook in three points:
+
+* its presentations carry `issuer_key_set` and `proof_time` beside `proof`, and `proof` holds
+  `zk_proof` alone; Section 3 and `bbs-cd-plugins-v0.1` wrap them in `inputs`;
+* it computes D as the UTC date of `proof_time`, which is D at the `utc_offset` `+00:00`;
+* it accepts `return` on an `age_check` item and then puts `true` in `results`.
