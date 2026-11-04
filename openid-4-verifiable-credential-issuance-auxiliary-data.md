@@ -80,20 +80,13 @@ Parameters:
   specification defines `sha-256` (Section 4.1.1) and `aes-128` (Section 4.1.2). The specification
   of a Credential's type MAY define further values.
 * `path`: CONDITIONAL. Claims path pointer (Appendix C of [OpenID4VCI]) that selects exactly one
-  claim: the claim that holds the commitment.
+  claim: the claim that holds the commitment. In a CBOR-based Credential, such as `mso_mdoc`, the
+  claim is a byte string holding the commitment. In a JSON-based Credential, such as `dc+sd-jwt`,
+  it is a string holding the base64url-encoded commitment.
 * `value_digest`: CONDITIONAL. For an mdoc, the entry of the MSO's `valueDigests` that holds the
   commitment itself, with no data element. It is an object with two members: `namespace`, the
   namespace as a string, and `digest_id`, the `digestID` as an integer. The commitment has the
   length of the MSO's digests.
-* `encoding`: OPTIONAL in metadata with `path`. MUST be absent otherwise. How the claim at `path`
-  represents the commitment. This specification defines these values, where the claim is a string
-  holding the commitment:
-  * `base64url`: base64url-encoded;
-  * `base64`: base64-encoded with padding (Section 4 of [RFC4648]);
-  * `hex`: lowercase hexadecimal.
-
-  When `encoding` is absent, the claim holds the commitment's bytes, such as an mdoc `bstr` data
-  element. Other specifications MAY define further values.
 * `opening`: REQUIRED when the Credential Issuer sends the entry in a response. MUST be absent
   otherwise. The base64url-encoded opening. It is a Secret Value.
 * `commitment`: REQUIRED when the Wallet sends the entry in a key proof. MUST be absent otherwise.
@@ -102,7 +95,7 @@ Parameters:
 An entry has exactly one of `path` and `value_digest`. Its location is the claim at `path`, or the
 value digest at `value_digest`.
 
-A Wallet that does not recognize the `alg` or the `encoding` of an entry:
+A Wallet that does not recognize the `alg` of an entry:
 
 * MUST NOT request the Credential when the entry is in `to_wallet`, or in `to_issuer` with
   `required` `true`;
@@ -391,7 +384,6 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
   Issuance 1.1", Editor's draft openid-4-verifiable-credential-issuance-1_1-01.
 * [RFC2119] S. Bradner, "Key words for use in RFCs to Indicate Requirement Levels", BCP 14,
   RFC 2119.
-* [RFC4648] S. Josefsson, "The Base16, Base32, and Base64 Data Encodings", RFC 4648.
 * [RFC7515] M. Jones, J. Bradley, N. Sakimura, "JSON Web Signature (JWS)", RFC 7515.
 * [RFC7519] M. Jones, J. Bradley, N. Sakimura, "JSON Web Token (JWT)", RFC 7519.
 * [RFC8174] B. Leiba, "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words", BCP 14,
