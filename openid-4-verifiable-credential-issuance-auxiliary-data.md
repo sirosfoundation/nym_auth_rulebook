@@ -110,7 +110,7 @@ A Wallet that does not recognize the `alg` or the `encoding` of an entry:
 Checks:
 
 * **From the Credential Issuer.** The Wallet MUST check that `alg` computes, from the `opening`, the
-  commitment that the entry's location holds.
+  commitment that the entry's location holds in the Credential the entry accompanies.
 * **From the Wallet.** The Wallet sends the commitment in the key proofs of its Credential Request
   (Section 6). The Credential Issuer MUST check that `commitment` has the output length of `alg`. It
   writes `commitment` at the entry's location. After issuance, the Wallet MUST check that this
@@ -127,8 +127,8 @@ This specification defines the following parameter for the objects of
 * `auxiliary_data_supported`: OPTIONAL. Object describing the Auxiliary Data Entries used to issue
   this Credential Configuration. It contains at least one of `to_wallet` and `to_issuer`. Each entry
   carries the parameters its Auxiliary Data Type defines for metadata.
-  * `to_wallet`: OPTIONAL. Non-empty array of the entries the Credential Issuer sends in each
-    response that carries Credentials (Section 7).
+  * `to_wallet`: OPTIONAL. Non-empty array of the entries the Credential Issuer sends with each
+    Credential (Section 7).
   * `to_issuer`: OPTIONAL. Non-empty array of the entries the Credential Issuer accepts in the key
     proofs of a Credential Request (Section 6). An entry MAY contain `required` (Boolean, default
     `false`). When `required` is `true`, the Wallet MUST send the entry, and MUST recognize its type
@@ -243,33 +243,34 @@ Every other rejection uses the error code `invalid_proof`.
 
 # 7. Auxiliary Data in Credential Responses
 
-This specification defines the following parameter for the `credential_metadata` object of the
-Credential Response and the Deferred Credential Response (Sections 9.3 and 10.2 of [OpenID4VCI]):
+This specification defines the following parameter for the objects of the `credentials` array of
+the Credential Response and the Deferred Credential Response (Sections 9.3 and 10.2 of
+[OpenID4VCI]):
 
-* `auxiliary_data`: REQUIRED in a response that carries Credentials when `to_wallet` of the
-  Credential Configuration lists entries. MUST be absent otherwise. Non-empty array of Auxiliary
-  Data Entries. They apply to every Credential of the response.
+* `auxiliary_data`: REQUIRED when `to_wallet` of the Credential Configuration lists entries. MUST
+  be absent otherwise. Non-empty array of Auxiliary Data Entries for the Credential in the same
+  object.
 
-`auxiliary_data` MUST NOT appear in the `credential_metadata` of Credential Issuer Metadata.
+An entry that applies to every Credential of the response appears in each object.
 
 Below is a non-normative example of the payload of an encrypted Credential Response:
 
 ```json
 {
   "credentials": [
-    { "credential": "ompuYW1lU3BhY2Vz..." }
+    {
+      "credential": "ompuYW1lU3BhY2Vz...",
+      "auxiliary_data": [
+        {
+          "type": "commitment",
+          "alg": "sha-256",
+          "path": ["org.example.membership.1", "member_commitment"],
+          "opening": "So-cHS4_SltsfY6fChssPQ"
+        }
+      ]
+    }
   ],
-  "notification_id": "3fwe98js",
-  "credential_metadata": {
-    "auxiliary_data": [
-      {
-        "type": "commitment",
-        "alg": "sha-256",
-        "path": ["org.example.membership.1", "member_commitment"],
-        "opening": "So-cHS4_SltsfY6fChssPQ"
-      }
-    ]
-  }
+  "notification_id": "3fwe98js"
 }
 ```
 
@@ -285,17 +286,14 @@ Secret Values travel only in encrypted responses (Section 11 of [OpenID4VCI]).
 
 ## 7.2 Processing by the Wallet
 
-Before storing a Credential, the Wallet MUST check the entries it received and the entries it sent,
-as their Auxiliary Data Types define. The issuance fails when a check fails, when an entry that
-`to_wallet` lists is missing, or when a Secret Value arrives unencrypted. The Wallet then stores
-nothing from the response.
+Before storing a Credential, the Wallet MUST check the entries it received with that Credential and
+the entries it sent, as their Auxiliary Data Types define. The issuance fails when a check fails,
+when an entry that `to_wallet` lists is missing, or when a Secret Value arrives unencrypted. The
+Wallet then stores nothing from the response.
 
-The Wallet removes `auxiliary_data` from `credential_metadata` before it merges, caches or displays
-that object (Section 15.8 of [OpenID4VCI]).
-
-The Wallet stores the entries with each Credential of the response and deletes them with the
-Credential. It protects Secret Values like private keys. It MUST NOT display, log or export them in
-clear.
+The Wallet stores the entries of each object with the Credential of that object, and deletes them
+with the Credential. It protects Secret Values like private keys. It MUST NOT display, log or export
+them in clear.
 
 # 8. Security Considerations
 
@@ -319,12 +317,11 @@ A party that holds the Access Token, a DPoP proof and the `transaction_id` can f
 Credential Response under its own encryption key. Credential Issuers that send Secret Values in
 Deferred Credential Responses SHOULD keep `transaction_id` values short-lived.
 
-## 8.4 Separation from Display Metadata
+## 8.4 Separation from Metadata
 
-Wallets merge, cache and display `credential_metadata` (Section 15.8 of [OpenID4VCI]). In that
-object, Secret Values travel only inside `auxiliary_data`, which the Wallet removes before any of
-these steps (Section 7.2). A Credential Issuer MUST NOT place Secret Values in any other metadata
-parameter.
+Wallets merge the `credential_metadata` of a Credential Response with the Credential Issuer
+Metadata (Section 15.8 of [OpenID4VCI]). A Credential Issuer MUST NOT place Secret Values in any
+metadata parameter.
 
 # 9. Privacy Considerations
 
