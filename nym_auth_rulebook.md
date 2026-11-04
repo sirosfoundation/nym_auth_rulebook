@@ -186,21 +186,22 @@ For the `mso_mdoc` form:
   zero bytes, alongside the attestation.
 
 The issuer sends the opening of `bsc`, and the Wallet Unit sends `psc`, as `commitment` entries of
-[Credential Auxiliary Data](openid-4-verifiable-credential-issuance-auxiliary-data.md). This
-document defines their commitment functions, the values of `alg`:
+[Credential Auxiliary Data](openid-4-verifiable-credential-issuance-auxiliary-data.md). Both use
+the `alg` `aes-128`, with these keys `k` and messages `m`. The issuer sends `secret_seed` as the
+`opening` of `bsc`. The Wallet Unit decrypts `bsc` with it to obtain `m`, which holds `birth_date`:
 
-| `alg` | Opening | Commitment |
+| Commitment | `k` | `m`, 32 bytes |
 | :--- | :--- | :--- |
-| `nym_auth-bsc-aes-128` | `secret_seed` ‖ `birth_date`, 26 bytes | `bsc` (Attributes) |
-| `nym_auth-psc-aes-128` | `private_seed`, 16 bytes | `psc` (Attributes) |
+| `bsc` | `secret_seed` | `"nym/b"` ‖ 0x01 ‖ `birth_date` ‖ `"nym/b"` ‖ 0x02 ‖ 0x00×10 |
+| `psc` | `private_seed` | `"nym/p"` ‖ 0x01 ‖ 0x00×10 ‖ `"nym/p"` ‖ 0x02 ‖ 0x00×10 |
 
 An issuer of the `mso_mdoc` form MUST announce these entries in its Credential Configuration:
 
 ```json
 "auxiliary_data_supported": {
-  "to_wallet": [ { "type": "commitment", "alg": "nym_auth-bsc-aes-128",
+  "to_wallet": [ { "type": "commitment", "alg": "aes-128",
                    "value_digest": { "namespace": "eu.nym_auth.v1", "digest_id": 0 } } ],
-  "to_issuer": [ { "type": "commitment", "alg": "nym_auth-psc-aes-128",
+  "to_issuer": [ { "type": "commitment", "alg": "aes-128",
                    "value_digest": { "namespace": "eu.nym_auth.v1", "digest_id": 1 } } ]
 }
 ```

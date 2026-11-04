@@ -77,13 +77,14 @@ entropy.
 Parameters:
 
 * `alg`: REQUIRED. The commitment function, which computes the commitment from the opening. This
-  specification defines `sha-256`: the commitment is the SHA-256 hash of the opening. The
-  specification of a Credential's type MAY define further values.
+  specification defines `sha-256` (Section 4.1.1) and `aes-128` (Section 4.1.2). The specification
+  of a Credential's type MAY define further values.
 * `path`: CONDITIONAL. Claims path pointer (Appendix C of [OpenID4VCI]) that selects exactly one
   claim: the claim that holds the commitment.
 * `value_digest`: CONDITIONAL. For an mdoc, the entry of the MSO's `valueDigests` that holds the
   commitment itself, with no data element. It is an object with two members: `namespace`, the
-  namespace as a string, and `digest_id`, the `digestID` as an integer.
+  namespace as a string, and `digest_id`, the `digestID` as an integer. The commitment has the
+  length of the MSO's digests.
 * `encoding`: OPTIONAL in metadata with `path`. MUST be absent otherwise. How the claim at `path`
   represents the commitment. This specification defines these values, where the claim is a string
   holding the commitment:
@@ -109,15 +110,43 @@ A Wallet that does not recognize the `alg` or the `encoding` of an entry:
 
 Checks:
 
-* **From the Credential Issuer.** The Wallet MUST check that `alg` computes, from the `opening`, the
-  commitment that the entry's location holds in the Credential the entry accompanies.
+* **From the Credential Issuer.** The Wallet MUST check the `opening` against the commitment that
+  the entry's location holds in the Credential the entry accompanies, as `alg` defines.
 * **From the Wallet.** The Wallet sends the commitment in the key proofs of its Credential Request
-  (Section 6). The Credential Issuer MUST check that `commitment` has the output length of `alg`. It
-  writes `commitment` at the entry's location. After issuance, the Wallet MUST check that this
-  location holds its commitment.
+  (Section 6). The Credential Issuer MUST check that `commitment` has the output length of `alg` for
+  the Credential's type. It writes `commitment` at the entry's location. After issuance, the Wallet
+  MUST check that this location holds its commitment.
 
 Entries sent by the Wallet MAY travel in a Key Attestation. The commitment reveals no more about
 the Holder than the attested keys.
+
+### 4.1.1 `sha-256`
+
+The commitment is the SHA-256 hash [FIPS-180-4] of the opening. The Wallet checks an `opening` by
+comparing its hash with the commitment.
+
+### 4.1.2 `aes-128`
+
+The opening is a key `k`, which MUST be 16 random bytes. The commitment encrypts a message `m`
+under `k`:
+
+```
+AES-128-Enc(k, m_1) ‖ … ‖ AES-128-Enc(k, m_n)
+```
+
+`m_1`, …, `m_n` are the 16-byte blocks of `m`, the last one padded with zero bytes.
+`AES-128-Enc(k, b)` is the AES-128 block cipher [FIPS-197] on one block `b` under the key `k`, with
+no mode of operation. The holder of `k` decrypts the commitment to obtain `m`.
+
+* The specification of the Credential's type defines the length and the content of `m`. It MUST fix
+  at least one block of `m` to a constant. That block fixes `k`: another key that gives the same
+  block takes about 2^128 work to find. With `k` fixed, each other block of the commitment
+  determines its block of `m`, because AES is a permutation for each key.
+* Equal blocks of `m` give equal blocks of the commitment. The specification of the Credential's
+  type makes the blocks of `m` distinct, for example with a counter.
+* The Wallet checks an `opening` by decrypting the commitment with it. The `m` it obtains MUST hold
+  the constant blocks that the specification of the Credential's type defines.
+* A Wallet recognizes `aes-128` in an entry only when it knows these constant blocks.
 
 # 5. Credential Issuer Metadata
 
@@ -142,7 +171,7 @@ Below is a non-normative example of a Credential Configuration with this paramet
   "doctype": "org.example.membership.1",
   "auxiliary_data_supported": {
     "to_wallet": [
-      { "type": "commitment", "alg": "sha-256",
+      { "type": "commitment", "alg": "aes-128",
         "path": ["org.example.membership.1", "member_commitment"] }
     ],
     "to_issuer": [
@@ -156,7 +185,9 @@ Below is a non-normative example of a Credential Configuration with this paramet
 # 6. Auxiliary Data in Key Proofs
 
 When the Wallet sends entries, it places `auxiliary_data` in the signed part of each key
-proof (Appendix F of [OpenID4VCI]). In the examples, the commitment is the SHA-256 of the 16-byte
+proof (Appendix F of [OpenID4VCI]). In the examples, the type `org.example.membership.1` commits
+with `sha-256` at the value digest. At `member_commitment` it commits with `aes-128`, and sets `m`
+to the 32 ASCII bytes `org.example/member/commitment/01`. The key proof example commits to the
 opening `8f3b2c9e41d07a65b1e2f4c3d9a08176` (hex).
 
 ## 6.1 `jwt` Proof Type
@@ -263,7 +294,7 @@ Below is a non-normative example of the payload of an encrypted Credential Respo
       "auxiliary_data": [
         {
           "type": "commitment",
-          "alg": "sha-256",
+          "alg": "aes-128",
           "path": ["org.example.membership.1", "member_commitment"],
           "opening": "So-cHS4_SltsfY6fChssPQ"
         }
@@ -350,6 +381,10 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
 
 ## 11.1 Normative References
 
+* [FIPS-180-4] National Institute of Standards and Technology, "Secure Hash Standard (SHS)",
+  FIPS PUB 180-4, 2015.
+* [FIPS-197] National Institute of Standards and Technology, "Advanced Encryption Standard (AES)",
+  FIPS PUB 197, 2001, updated 2023.
 * [JSON-LD] G. Kellogg, M. Sporny, D. Longley, M. Lanthaler, P.-A. Champin, N. Lindström, "JSON-LD
   1.1", W3C Recommendation, 16 July 2020.
 * [OpenID4VCI] T. Lodderstedt, K. Yasuda, T. Looker, P. Bastian, "OpenID for Verifiable Credential
@@ -368,6 +403,8 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
 
 * [IANA.JWT] IANA, "JSON Web Token Claims".
 
+[FIPS-180-4]: https://doi.org/10.6028/NIST.FIPS.180-4
+[FIPS-197]: https://doi.org/10.6028/NIST.FIPS.197-upd1
 [OpenID4VCI]: https://github.com/openid/OpenID4VCI/blob/main/1.1/openid-4-verifiable-credential-issuance-1_1.md
 [RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
 [RFC7515]: https://www.rfc-editor.org/rfc/rfc7515
