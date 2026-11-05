@@ -200,7 +200,8 @@ An issuer of the `mso_mdoc` form MUST announce these entries in its Credential C
 ```json
 "auxiliary_data_supported": {
   "to_wallet": [ { "type": "commitment", "alg": "aes-128",
-                   "value_digest": { "namespace": "eu.nym_auth.v1", "digest_id": 0 } } ],
+                   "value_digest": { "namespace": "eu.nym_auth.v1", "digest_id": 0 },
+                   "required": true } ],
   "to_issuer": [ { "type": "commitment", "alg": "aes-128",
                    "value_digest": { "namespace": "eu.nym_auth.v1", "digest_id": 1 } } ]
 }
@@ -213,7 +214,7 @@ the subject as it does for `secret_seed`. It MUST record the first such `psc` it
 subject. It MUST refuse any other `psc` except 32 zero bytes, unless the subject's record was reset.
 The refusal uses the error code `auxiliary_data_conflict`
 ([Credential Auxiliary Data](openid-4-verifiable-credential-issuance-auxiliary-data.md),
-Section 6.4).
+Section 6.5).
 
 The reset rules:
 

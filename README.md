@@ -4,7 +4,7 @@
 | :--- | :--- | :--- |
 | [zkp_req.md](zkp_req.md) | 0.1 | The `zkp_req` DCQL format: selection, `_req` items, `results`, the presentation and the `direct_post.cwt` Response Mode. |
 | [nym_auth_rulebook.md](nym_auth_rulebook.md) | 0.7 | The `nym_auth` attestation, its function catalogue and what every `nym_auth` proof establishes. `rulebook.md` links to it. |
-| [openid-4-verifiable-credential-issuance-auxiliary-data.md](openid-4-verifiable-credential-issuance-auxiliary-data.md) | 0.1 | The OpenID4VCI extension that carries data such as commitment openings and commitments beside the Credential and in the key proofs. |
+| [openid-4-verifiable-credential-issuance-auxiliary-data.md](openid-4-verifiable-credential-issuance-auxiliary-data.md) | 0.1 | The OpenID4VCI extension that carries data at issuance: claim values and commitments from the Wallet, and data such as commitment openings beside each Credential. |
 
 [proof_backends/](proof_backends/) holds one file per proof backend identifier: what it names and
 the bytes of its proofs.

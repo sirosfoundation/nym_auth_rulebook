@@ -9,15 +9,16 @@ date: "2026-11-03"
 # 1. Introduction
 
 At the Credential Endpoint, [OpenID4VCI] exchanges key proofs and Credentials. Some issuances also
-need data that goes with a Credential. The Credential cannot contain this data, because the data is
-never presented. Two examples:
+need data in either direction. The Wallet supplies values that the Credential Issuer writes into
+claims. The Credential Issuer sends data that goes with a Credential and stays outside it. Three
+examples:
 
+* The Wallet generates an identifier. The Credential Issuer writes it into a claim.
+* The Wallet computes a commitment. The Credential Issuer signs it into the Credential.
 * The Credential contains a commitment. The Wallet needs its opening.
-* The Wallet keeps a secret. The Credential Issuer signs a commitment to it into the Credential.
 
-This specification defines `auxiliary_data` for such data. It is an array of typed
-entries, and one issuance can use several types. This specification defines the type
-`commitment`.
+This specification defines `auxiliary_data`, an array of typed entries, for such data. It defines
+the types `commitment` and `claim_value`.
 
 ## 1.1 Requirements Notation and Conventions
 
@@ -29,7 +30,7 @@ here.
 # 2. Terminology
 
 This specification uses the terms "Credential", "Credential Configuration", "Credential Issuer",
-"Credential Request", "Credential Response", "Holder", "Key Attestation" and "Wallet" as defined in
+"Credential Request", "Credential Response", "Key Attestation" and "Wallet" as defined in
 [OpenID4VCI].
 
 Base64url-encoded denotes the URL-safe base64 encoding without padding defined in Section 2 of
@@ -37,13 +38,12 @@ Base64url-encoded denotes the URL-safe base64 encoding without padding defined i
 
 This specification defines the following terms:
 
-* **Credential Auxiliary Data:** data that accompanies a Credential at issuance and stays outside
-  it.
+* **Credential Auxiliary Data:** data exchanged at issuance beside key proofs and Credentials. It
+  holds values that the Wallet supplies for claims, and data that the Credential Issuer sends with a
+  Credential and that stays outside it.
 * **Auxiliary Data Entry:** a JSON object that carries one item of Credential Auxiliary Data.
 * **Auxiliary Data Type:** a kind of Auxiliary Data Entry, with its parameters and processing
   rules.
-* **Secret Value:** a parameter of an Auxiliary Data Entry that its Auxiliary Data Type marks as
-  secret.
 
 # 3. Auxiliary Data Entries
 
@@ -52,27 +52,27 @@ An Auxiliary Data Entry has the following parameter:
 * `type`: REQUIRED. String identifying the Auxiliary Data Type. Types defined outside this
   specification SHOULD use collision-resistant names, such as URIs.
 
-The Auxiliary Data Type defines all other parameters.
+The Auxiliary Data Type defines all other parameters. A type can give its entries a location in the
+Credential, such as the claim that a claims path pointer (Appendix C of [OpenID4VCI]) selects.
 
 `auxiliary_data` is a non-empty array of Auxiliary Data Entries. It contains at most one
-entry per `type` and location (`path` or `value_digest`, Section 4.1). A recipient MUST ignore
-entries of an unrecognized `type`.
+entry per `type` and location. A Wallet MUST ignore entries of an unrecognized `type`. The
+Credential Issuer accepts only the entries that it announces (Section 6.5).
 
 # 4. Auxiliary Data Types
 
 An Auxiliary Data Type definition specifies:
 
+* which parties send its entries: the Credential Issuer (`to_wallet`), the Wallet (`to_issuer`),
+  or both;
 * the parameters of its entries in metadata, from the Wallet and from the Credential Issuer;
-* which parameters are Secret Values;
 * the checks the recipient performs;
 * whether entries sent by the Wallet may travel in a Key Attestation.
 
 ## 4.1 `commitment`
 
-A commitment to a secret byte string, its opening. The Credential contains the commitment as a
-claim or as an mdoc value digest. `alg` defines the form of the opening, and the specification of
-the Credential's type defines how it is generated. The opening MUST have at least 128 bits of
-entropy.
+A commitment to a byte string, its opening. The Credential contains the commitment as a claim or as
+an mdoc value digest. `alg` defines the form of the opening.
 
 Parameters:
 
@@ -88,30 +88,24 @@ Parameters:
   namespace as a string, and `digest_id`, the `digestID` as an integer. The commitment has the
   length of the MSO's digests.
 * `opening`: REQUIRED when the Credential Issuer sends the entry in a response. MUST be absent
-  otherwise. The base64url-encoded opening. It is a Secret Value.
-* `commitment`: REQUIRED when the Wallet sends the entry in a key proof. MUST be absent otherwise.
-  The base64url-encoded commitment.
+  otherwise. The base64url-encoded opening.
+* `commitment`: REQUIRED when the Wallet sends the entry. MUST be absent otherwise. The
+  base64url-encoded commitment.
 
 An entry has exactly one of `path` and `value_digest`. Its location is the claim at `path`, or the
 value digest at `value_digest`.
 
-A Wallet that does not recognize the `alg` of an entry:
-
-* MUST NOT request the Credential when the entry is in `to_wallet`, or in `to_issuer` with
-  `required` `true`;
-* MUST NOT send the entry otherwise.
+A Wallet treats an entry whose `alg` it does not recognize as an entry of an unrecognized type.
 
 Checks:
 
 * **From the Credential Issuer.** The Wallet MUST check the `opening` against the commitment that
   the entry's location holds in the Credential the entry accompanies, as `alg` defines.
-* **From the Wallet.** The Wallet sends the commitment in the key proofs of its Credential Request
-  (Section 6). The Credential Issuer MUST check that `commitment` has the output length of `alg` for
-  the Credential's type. It writes `commitment` at the entry's location. After issuance, the Wallet
-  MUST check that this location holds its commitment.
+* **From the Wallet.** The Credential Issuer MUST check that `commitment` has the output length of
+  `alg` for the Credential's type. It writes `commitment` at the entry's location. After issuance,
+  the Wallet MUST check that this location holds its commitment.
 
-Entries sent by the Wallet MAY travel in a Key Attestation. The commitment reveals no more about
-the Holder than the attested keys.
+Entries sent by the Wallet MAY travel in a Key Attestation.
 
 ### 4.1.1 `sha-256`
 
@@ -120,8 +114,7 @@ comparing its hash with the commitment.
 
 ### 4.1.2 `aes-128`
 
-The opening is a key `k`, which MUST be 16 random bytes. The commitment encrypts a message `m`
-under `k`:
+The opening is a 16-byte key `k`. The commitment encrypts a message `m` under `k`:
 
 ```
 AES-128-Enc(k, m_1) ‖ … ‖ AES-128-Enc(k, m_n)
@@ -129,17 +122,35 @@ AES-128-Enc(k, m_1) ‖ … ‖ AES-128-Enc(k, m_n)
 
 `m_1`, …, `m_n` are the 16-byte blocks of `m`, the last one padded with zero bytes.
 `AES-128-Enc(k, b)` is the AES-128 block cipher [FIPS-197] on one block `b` under the key `k`, with
-no mode of operation. The holder of `k` decrypts the commitment to obtain `m`.
+no mode of operation.
 
 * The specification of the Credential's type defines the length and the content of `m`. It MUST fix
-  at least one block of `m` to a constant. That block fixes `k`: another key that gives the same
-  block takes about 2^128 work to find. With `k` fixed, each other block of the commitment
-  determines its block of `m`, because AES is a permutation for each key.
-* Equal blocks of `m` give equal blocks of the commitment. The specification of the Credential's
-  type makes the blocks of `m` distinct, for example with a counter.
+  at least one block of `m` to a constant.
 * The Wallet checks an `opening` by decrypting the commitment with it. The `m` it obtains MUST hold
   the constant blocks that the specification of the Credential's type defines.
 * A Wallet recognizes `aes-128` in an entry only when it knows these constant blocks.
+
+## 4.2 `claim_value`
+
+A value that the Wallet supplies for a claim. The Credential Issuer writes it into the Credential.
+Only the Wallet sends entries of this type (`to_issuer`).
+
+Parameters:
+
+* `path`: REQUIRED. Claims path pointer (Appendix C of [OpenID4VCI]) that selects exactly one
+  claim: the claim that receives the value. The entry's location is this claim.
+* `value`: REQUIRED when the Wallet sends the entry. MUST be absent otherwise. The value of the
+  claim. In a JSON-based Credential, such as `dc+sd-jwt`, it is the claim's JSON value. In a
+  CBOR-based Credential, such as `mso_mdoc`, it is the base64url-encoded CBOR encoding [RFC8949] of
+  the claim's value.
+
+Checks:
+
+* The Credential Issuer MUST check that the Credential's type allows `value` for the claim. It
+  writes `value` at the entry's location. After issuance, the Wallet MUST check that this location
+  holds the value it sent.
+
+Entries of this type MUST NOT travel in a Key Attestation.
 
 # 5. Credential Issuer Metadata
 
@@ -148,13 +159,16 @@ This specification defines the following parameter for the objects of
 
 * `auxiliary_data_supported`: OPTIONAL. Object describing the Auxiliary Data Entries used to issue
   this Credential Configuration. It contains at least one of `to_wallet` and `to_issuer`. Each entry
-  carries the parameters its Auxiliary Data Type defines for metadata.
+  carries the parameters its Auxiliary Data Type defines for metadata. No two of its entries name
+  the same location.
   * `to_wallet`: OPTIONAL. Non-empty array of the entries the Credential Issuer sends with each
     Credential (Section 7).
-  * `to_issuer`: OPTIONAL. Non-empty array of the entries the Credential Issuer accepts in the key
-    proofs of a Credential Request (Section 6). An entry MAY contain `required` (Boolean, default
-    `false`). When `required` is `true`, the Wallet MUST send the entry, and MUST recognize its type
-    before it requests the Credential.
+  * `to_issuer`: OPTIONAL. Non-empty array of the entries the Credential Issuer accepts from the
+    Wallet (Section 6).
+
+An entry of either array MAY contain `required` (Boolean, default `false`). The Wallet MUST
+recognize the type of each entry with `required` `true` before it requests the Credential. It MUST
+send each entry of `to_issuer` with `required` `true`.
 
 Below is a non-normative example of a Credential Configuration with this parameter:
 
@@ -165,30 +179,31 @@ Below is a non-normative example of a Credential Configuration with this paramet
   "auxiliary_data_supported": {
     "to_wallet": [
       { "type": "commitment", "alg": "aes-128",
-        "path": ["org.example.membership.1", "member_commitment"] }
+        "path": ["org.example.membership.1", "member_commitment"], "required": true }
     ],
     "to_issuer": [
       { "type": "commitment", "alg": "sha-256",
-        "value_digest": { "namespace": "org.example.membership.1", "digest_id": 1 } }
+        "value_digest": { "namespace": "org.example.membership.1", "digest_id": 1 } },
+      { "type": "claim_value", "path": ["org.example.membership.1", "member_id"],
+        "required": true }
     ]
   }
 }
 ```
 
-# 6. Auxiliary Data in Key Proofs
+# 6. Auxiliary Data from the Wallet
 
 When the Wallet sends entries, it places `auxiliary_data` in the signed part of each key
-proof (Appendix F of [OpenID4VCI]). In the examples, the type `org.example.membership.1` commits
-with `sha-256` at the value digest. At `member_commitment` it commits with `aes-128`, and sets `m`
-to the 32 ASCII bytes `org.example/member/commitment/01`. The key proof example commits to the
-opening `8f3b2c9e41d07a65b1e2f4c3d9a08176` (hex).
+proof (Appendix F of [OpenID4VCI]). A Credential Request without key proofs carries the entries
+itself (Section 6.4).
 
 ## 6.1 `jwt` Proof Type
 
 `auxiliary_data` is a claim in the JWT body. It stays there when the JOSE header carries
 a `key_attestation`.
 
-Below is a non-normative example of a decoded key proof JWT:
+Below is a non-normative example of a decoded key proof JWT. It commits to the opening
+`8f3b2c9e41d07a65b1e2f4c3d9a08176` (hex), and gives `member_id` the text string `M-4f1c2a9e`:
 
 ```
 {
@@ -212,6 +227,11 @@ Below is a non-normative example of a decoded key proof JWT:
       "alg": "sha-256",
       "value_digest": { "namespace": "org.example.membership.1", "digest_id": 1 },
       "commitment": "JhQM6yeuK84BoGVVSxbLL9HjjeiBERnWHEZSIIMqwd0"
+    },
+    {
+      "type": "claim_value",
+      "path": ["org.example.membership.1", "member_id"],
+      "value": "ak0tNGYxYzJhOWU"
     }
   ]
 }
@@ -221,13 +241,10 @@ Below is a non-normative example of a decoded key proof JWT:
 
 `auxiliary_data` is a property of the Verifiable Presentation. Its `@context` MUST hold an
 embedded context [JSON-LD] after `https://www.w3.org/ns/credentials/v2` [VC-DATA-MODEL-2.0]. That
-context MUST define the term `auxiliary_data` with its term IRI and `"@type": "@json"`. The context
-makes the value a JSON literal, which canonicalization keeps intact. The term IRI names the term in
-this specification. The change controller of Section 10, the OpenID Foundation Digital Credentials
-Protocols Working Group, assigns it.
+context MUST define the term `auxiliary_data` with its term IRI and `"@type": "@json"`. The OpenID
+Foundation Digital Credentials Protocols Working Group assigns the term IRI.
 
-Below is a non-normative example of the embedded context. Its term IRI,
-`https://example.org/auxiliary_data`, is an example:
+Below is a non-normative example of the embedded context:
 
 ```json
 {
@@ -240,30 +257,39 @@ Below is a non-normative example of the embedded context. Its term IRI,
 
 ## 6.3 `attestation` Proof Type
 
-`auxiliary_data` is a claim in the Key Attestation body (Appendix D.1 of
-[OpenID4VCI]). The Wallet passes it and the `c_nonce` to the Key Attestation signer. The signer
-includes both in a fresh Key Attestation. Only Auxiliary Data Types that allow it travel this way.
+`auxiliary_data` is a claim in the Key Attestation body (Appendix D.1 of [OpenID4VCI]).
 
-## 6.4 Processing by the Credential Issuer
+## 6.4 Credential Requests without Key Proofs
+
+This specification defines the following parameter of the Credential Request (Section 9.2 of
+[OpenID4VCI]):
+
+* `auxiliary_data`: OPTIONAL. The Wallet's entries, in a request without `proofs`. MUST be absent
+  when the request contains `proofs`.
+
+## 6.5 Processing by the Credential Issuer
 
 The Credential Issuer:
 
-1. reads entries only from the signed part of validated key proofs;
+1. reads entries only from the signed part of validated key proofs, or from the Credential Request
+   when it has no key proofs;
 2. rejects the request if its key proofs carry different `auxiliary_data` values;
-3. rejects the request if a `required` entry is missing;
-4. checks each entry as its Auxiliary Data Type defines, and rejects the request if a check fails;
-5. rejects the request if an entry conflicts with a value it holds for the subject, such as a
+3. rejects the request if an entry matches no entry of `to_issuer`. An entry matches an entry of
+   `to_issuer` when it has the same value for each parameter of that entry other than `required`;
+4. rejects the request if a `required` entry is missing;
+5. checks each entry as its Auxiliary Data Type defines, and rejects the request if a check fails;
+6. rejects the request if an entry conflicts with a value it holds for the subject, such as a
    commitment recorded at an earlier issuance;
-6. applies each entry to every Credential of the request.
+7. applies each entry to every Credential of the request.
 
-A rejection in step 5 uses the following error code, in addition to those of Section 9.3.1.2 of
+This specification defines the following error codes, in addition to those of Section 9.3.1.2 of
 [OpenID4VCI]:
 
+* `invalid_auxiliary_data`: the Wallet's entries differ between key proofs, include an entry that
+  `to_issuer` does not announce, lack a `required` entry, or fail a check of their Auxiliary Data
+  Type (steps 2 to 5).
 * `auxiliary_data_conflict`: an Auxiliary Data Entry conflicts with a value the Credential Issuer
-  holds for the subject. Retrying does not resolve it. The Credential Issuer resolves it out of
-  band.
-
-Every other rejection uses the error code `invalid_proof`.
+  holds for the subject (step 6).
 
 # 7. Auxiliary Data in Credential Responses
 
@@ -277,7 +303,7 @@ the Credential Response and the Deferred Credential Response (Sections 9.3 and 1
 
 An entry that applies to every Credential of the response appears in each object.
 
-Below is a non-normative example of the payload of an encrypted Credential Response:
+Below is a non-normative example of a Credential Response:
 
 ```json
 {
@@ -298,68 +324,13 @@ Below is a non-normative example of the payload of an encrypted Credential Respo
 }
 ```
 
-## 7.1 Encryption
-
-Secret Values travel only in encrypted responses (Section 11 of [OpenID4VCI]).
-
-* When `to_wallet` lists a type with Secret Values, the Wallet MUST send
-  `credential_response_encryption`. This applies to the Credential Request and to every Deferred
-  Credential Request.
-* When the Wallet requested no encryption, the Credential Issuer MUST NOT send Secret Values. It
-  returns the error code `invalid_encryption_parameters`.
-
-## 7.2 Processing by the Wallet
+## 7.1 Processing by the Wallet
 
 Before storing a Credential, the Wallet MUST check the entries it received with that Credential and
-the entries it sent, as their Auxiliary Data Types define. The issuance fails when a check fails,
-when an entry that `to_wallet` lists is missing, or when a Secret Value arrives unencrypted. The
-Wallet then stores nothing from the response.
+the entries it sent, as their Auxiliary Data Types define. The issuance fails when a check fails or
+when an entry that `to_wallet` lists is missing. The Wallet then stores nothing from the response.
 
-The Wallet stores the entries of each object with the Credential of that object, and deletes them
-with the Credential. It protects Secret Values like private keys. It MUST NOT display, log or export
-them in clear.
-
-# 8. Security Considerations
-
-## 8.1 Integrity of Entries Sent by the Wallet
-
-Entries sent by the Wallet are inside the signed key proof. A party that holds only the Access
-Token cannot replace them.
-
-## 8.2 Integrity of the Response Encryption Key
-
-The party that holds the Access Token chooses the response encryption key: it can send a
-Credential Request of its own, with the key proofs it obtains and a response encryption key it
-controls. Encrypting the Credential Request (Section 9.2 of [OpenID4VCI]) protects the key from
-other parties. A Wallet whose backend holds the Access Token trusts that backend with Secret Values.
-Decrypting the Credential Response in the component that stores Secret Values keeps them out of
-the storage and logs of the other components.
-
-## 8.3 Deferred Credential Issuance
-
-A party that holds the Access Token, a DPoP proof and the `transaction_id` can fetch the Deferred
-Credential Response under its own encryption key. Credential Issuers that send Secret Values in
-Deferred Credential Responses SHOULD keep `transaction_id` values short-lived.
-
-## 8.4 Separation from Metadata
-
-Wallets merge the `credential_metadata` of a Credential Response with the Credential Issuer
-Metadata (Section 15.8 of [OpenID4VCI]). A Credential Issuer MUST NOT place Secret Values in any
-metadata parameter.
-
-# 9. Privacy Considerations
-
-## 9.1 Correlation
-
-A value that the Wallet sends to several Credential Issuers links its Credentials across them.
-Auxiliary Data Types SHOULD let the Wallet use a distinct value per Credential Issuer.
-
-## 9.2 Key Attestation Signers
-
-The Key Attestation signer sees every entry placed in it. Auxiliary Data Types allow this only for
-values that reveal no more than the attested keys.
-
-# 10. IANA Considerations
+# 8. IANA Considerations
 
 This specification registers the following claim in the IANA "JSON Web Token Claims" registry
 [IANA.JWT] established by [RFC7519]:
@@ -370,9 +341,9 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
   openid-specs-digital-credentials-protocols@lists.openid.net
 * Specification Document(s): Section 6 of this specification
 
-# 11. References
+# 9. References
 
-## 11.1 Normative References
+## 9.1 Normative References
 
 * [FIPS-180-4] National Institute of Standards and Technology, "Secure Hash Standard (SHS)",
   FIPS PUB 180-4, 2015.
@@ -388,10 +359,12 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
 * [RFC7519] M. Jones, J. Bradley, N. Sakimura, "JSON Web Token (JWT)", RFC 7519.
 * [RFC8174] B. Leiba, "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words", BCP 14,
   RFC 8174.
+* [RFC8949] C. Bormann, P. Hoffman, "Concise Binary Object Representation (CBOR)", STD 94,
+  RFC 8949.
 * [VC-DATA-MODEL-2.0] M. Sporny, T. Thibodeau Jr, I. Herman, G. Cohen, M. B. Jones, "Verifiable
   Credentials Data Model v2.0", W3C Recommendation, 15 May 2025.
 
-## 11.2 Informative References
+## 9.2 Informative References
 
 * [IANA.JWT] IANA, "JSON Web Token Claims".
 
@@ -402,6 +375,7 @@ This specification registers the following claim in the IANA "JSON Web Token Cla
 [RFC7515]: https://www.rfc-editor.org/rfc/rfc7515
 [RFC7519]: https://www.rfc-editor.org/rfc/rfc7519
 [RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
+[RFC8949]: https://www.rfc-editor.org/rfc/rfc8949
 [JSON-LD]: https://www.w3.org/TR/2020/REC-json-ld11-20200716/
 [VC-DATA-MODEL-2.0]: https://www.w3.org/TR/vc-data-model-2.0/
 [IANA.JWT]: https://www.iana.org/assignments/jwt
